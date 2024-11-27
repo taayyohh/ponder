@@ -21,13 +21,6 @@ contract PonderFactoryTest is Test {
         tokenC = new ERC20Mint("Token C", "TKNC");
     }
 
-
-    // Add this test to get the hash
-    function testGetInitHash() public {
-        bytes32 hash = factory.INIT_CODE_PAIR_HASH();
-        console.logBytes32(hash);
-    }
-
     function testCreatePair() public {
         address token0 = address(tokenA) < address(tokenB) ? address(tokenA) : address(tokenB);
         address token1 = address(tokenA) < address(tokenB) ? address(tokenB) : address(tokenA);

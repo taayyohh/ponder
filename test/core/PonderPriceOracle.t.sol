@@ -6,13 +6,11 @@ import "../mocks/ERC20Mint.sol";
 import "../../src/core/PonderFactory.sol";
 import "../../src/core/PonderPair.sol";
 import "../../src/core/PonderPriceOracle.sol";
-import "../../src/core/PonderSafeguard.sol";
 
 
 contract PonderPriceOracleTest is Test {
     PonderFactory factory;
     PonderPriceOracle oracle;
-    PonderSafeguard safeguard;
     ERC20Mint token0;
     ERC20Mint token1;
     PonderPair pair;
@@ -27,10 +25,6 @@ contract PonderPriceOracleTest is Test {
         // Deploy core contracts
         factory = new PonderFactory(address(this));
         oracle = new PonderPriceOracle(address(factory));
-        safeguard = new PonderSafeguard();
-
-        // Set up safeguard in factory
-        factory.setSafeguard(address(safeguard));
 
         // Rest of the setup remains the same...
         token0 = new ERC20Mint("Token A", "TKNA");

@@ -8,7 +8,6 @@ contract PonderFactory is IPonderFactory {
     address public feeTo;
     address public feeToSetter;
     address public migrator;
-    address public safeguard;
 
     mapping(address => mapping(address => address)) public getPair;
     address[] public allPairs;
@@ -18,7 +17,7 @@ contract PonderFactory is IPonderFactory {
     error PairExists();
     error Forbidden();
 
-    bytes32 public constant INIT_CODE_PAIR_HASH = 0x9d46524424ed455e1323bed43f495a3ef01767d945e94611af08f861a30c01d7;
+    bytes32 public constant INIT_CODE_PAIR_HASH = 0xc490578b78bb4d3fde23127ed289a36cdf5671e74563647ccf9abdfe91ba04f0;
 
     constructor(address _feeToSetter) {
         feeToSetter = _feeToSetter;
@@ -63,12 +62,5 @@ contract PonderFactory is IPonderFactory {
     function setMigrator(address _migrator) external {
         if (msg.sender != feeToSetter) revert Forbidden();
         migrator = _migrator;
-    }
-
-    function setSafeguard(address _safeguard) external {
-        if (msg.sender != feeToSetter) revert Forbidden();
-        if (_safeguard == address(0)) revert ZeroAddress();
-        safeguard = _safeguard;
-        emit SafeguardUpdated(_safeguard);
     }
 }

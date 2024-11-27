@@ -109,9 +109,6 @@ contract PonderRouterTest is Test {
     }
 
     function testSwapExactTokensForTokens() public {
-        // Setup initial liquidity
-        address pairAddress = factory.createPair(address(tokenA), address(tokenB));
-
         vm.startPrank(alice);
 
         // Add initial liquidity
@@ -161,9 +158,6 @@ contract PonderRouterTest is Test {
     }
 
     function testSwapTokensForExactTokens() public {
-        // Setup initial liquidity
-        address pairAddress = factory.createPair(address(tokenA), address(tokenB));
-
         vm.startPrank(alice);
 
         // Add initial liquidity

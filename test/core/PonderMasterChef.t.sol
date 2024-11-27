@@ -70,7 +70,7 @@ contract PonderMasterChefTest is Test {
         vm.stopPrank();
     }
 
-    function testInitialState() public {
+    function testInitialState() public view {
         assertEq(address(masterChef.ponder()), address(ponder));
         assertEq(address(masterChef.factory()), address(factory));
         assertEq(masterChef.treasury(), treasury);
