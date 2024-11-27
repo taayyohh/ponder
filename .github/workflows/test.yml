@@ -1,9 +1,10 @@
-name: CI
+name: Test
 
 on:
   push:
+    branches:
+      - main
   pull_request:
-  workflow_dispatch:
 
 env:
   FOUNDRY_PROFILE: ci
@@ -16,7 +17,7 @@ jobs:
     name: Foundry project
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
         with:
           submodules: recursive
 
@@ -25,17 +26,9 @@ jobs:
         with:
           version: nightly
 
-      - name: Show Forge version
-        run: |
-          forge --version
-
-      - name: Run Forge fmt
-        run: |
-          forge fmt --check
-        id: fmt
-
       - name: Run Forge build
         run: |
+          forge --version
           forge build --sizes
         id: build
 
@@ -43,3 +36,14 @@ jobs:
         run: |
           forge test -vvv
         id: test
+
+      - name: Run Forge coverage
+        run: |
+          forge coverage --report lcov
+        id: coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./lcov.info
+          fail_ci_if_error: true
