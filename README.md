@@ -13,30 +13,46 @@
                 ╰────────╯                
 ```
 
-Ponder is a decentralized exchange protocol built for Bitkub Chain. The protocol builds on Uniswap V2's foundation while adding comprehensive safety features, reliable price feeds, and yield farming powered by the PONDER token.
+Ponder is a decentralized exchange protocol built specifically for Bitkub Chain. Building on Uniswap V2's proven foundation, Ponder introduces yield farming through the PONDER token while maintaining the core AMM functionality that powers decentralized trading.
 
-The protocol centers on automated market making, where liquidity providers deposit pairs of tokens into pools that enable trading. Each trade goes through multiple safety checks including price impact limits and emergency stops for extreme situations. The system maintains a time-weighted average price (TWAP) oracle, tracking prices over time to provide manipulation-resistant data feeds that other protocols can use.
+The protocol uses automated market making (AMM) to enable permissionless trading. Liquidity providers deposit pairs of tokens into pools to create trading markets. Every pool employs the constant product formula (x * y = k) to determine exchange rates, with a 0.3% fee on trades that rewards liquidity providers. The protocol's price oracle system accumulates time-weighted prices, providing TWAP (Time-Weighted Average Price) data feeds that other protocols can reliably use.
 
 ## PONDER Token
 
-The PONDER token forms the backbone of the protocol's economic system, featuring:
+The PONDER token ($PONDER) drives the protocol's economic incentives with the following specifications:
 
-- Maximum supply: 1 billion PONDER
-- Distribution period: 4 years from deployment
-- Minting: Controlled by MasterChef contract
-- Utility: Farming rewards and governance (planned)
-- Boosts: Up to 3x reward multipliers
+- Maximum supply cap: 1,000,000,000 (1 billion) tokens
+- Distribution timeline: 4 years from deployment, after which minting is permanently disabled
+- Minting control: Restricted to MasterChef contract for farming rewards
+- Ownership model: Two-step ownership transfer with pending owner mechanism
+- Future utility: Protocol governance (planned)
+- No pre-mine: All tokens distributed through farming
 
-## Farming Mechanics
+## Yield Farming System
 
-The farming system in Ponder brings several key features:
+The farming system, powered by MasterChef, introduces several sophisticated mechanics:
 
-- Liquidity providers earn PONDER by staking LP tokens
-- Users can stake PONDER to boost their farming rewards
-- Each pool has configurable allocation points for rewards
-- Deposit fees (up to 10%) are directed to treasury
-- Emergency withdrawals available for immediate fund access
-- Auto-compounding rewards across pools
+- **Base Farming:**
+    - LP token staking earns PONDER rewards
+    - Rewards calculated per second based on pool allocations
+    - Multiple pools with customizable reward weights
+
+- **Reward Boosting:**
+    - Users can stake PONDER to enhance farming yields
+    - Boost multipliers scale up to 3x base rate
+    - Boost calculation based on PONDER stake amount
+    - Independent boosts per pool
+
+- **Pool Management:**
+    - Configurable allocation points per pool
+    - Deposit fees (up to 10%) support protocol treasury
+    - Real-time reward rate adjustments
+    - Emergency withdrawal functionality
+
+- **Reward Distribution:**
+    - Automatic reward compounding
+    - Safe reward transfer handling
+    - Mass pool updates for efficiency
 
 ## Getting Started
 
@@ -53,8 +69,33 @@ forge build
 forge test
 ```
 
+## Contract Interactions
+
+For users looking to interact with the protocol:
+
+1. **Providing Liquidity:**
+    - Approve tokens to Router contract
+    - Call addLiquidity() with desired amounts
+    - Receive LP tokens representing pool share
+
+2. **Trading:**
+    - Approve tokens to Router contract
+    - Use swap functions with specified paths
+    - Set reasonable slippage tolerance
+
+3. **Farming:**
+    - Stake LP tokens in MasterChef
+    - Optionally stake PONDER for boosted rewards
+    - Harvest rewards anytime
+    - Compound or withdraw as needed
+
+4. **Using Price Feed:**
+    - Query pairs for current reserves
+    - Access TWAP data through oracle views
+    - Customize time windows for price accuracy
+
 ## License
 
 MIT License - see [LICENSE](LICENSE)
 
-While we've designed the system with security in mind, users should conduct their own review before using the protocol.
+While the protocol builds on proven mechanics, users should conduct their own review before participation.
