@@ -1,0 +1,39 @@
+{
+  "name": "@ponder/protocol",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Core smart contracts for Ponder Protocol",
+  "files": [
+    "dist",
+    "contracts"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./abis": {
+      "types": "./dist/abis/index.d.ts",
+      "import": "./dist/abis/index.mjs",
+      "require": "./dist/abis/index.js"
+    }
+  },
+  "scripts": {
+    "build": "forge build && pnpm generate && tsup",
+    "generate": "node --loader ts-node/esm scripts/generate-abis.ts",
+    "prepublishOnly": "pnpm build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

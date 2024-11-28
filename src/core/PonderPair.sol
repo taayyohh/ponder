@@ -7,7 +7,6 @@ import "../interfaces/IPonderFactory.sol";
 import "../interfaces/IPonderCallee.sol";
 import "../libraries/Math.sol";
 import "../libraries/UQ112x112.sol";
-import "forge-std/console.sol";
 
 contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
     using UQ112x112 for uint224;
