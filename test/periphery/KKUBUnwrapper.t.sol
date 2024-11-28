@@ -5,20 +5,29 @@ import "forge-std/Test.sol";
 import "../mocks/WETH9.sol";
 import "../../src/periphery/KKUBUnwrapper.sol";
 
+contract MockKKUB is WETH9 {
+    mapping(address => bool) public blacklist;
+
+    function setBlacklist(address user, bool status) external {
+        blacklist[user] = status;
+    }
+}
+
 contract KKUBUnwrapperTest is Test {
     KKUBUnwrapper unwrapper;
-    WETH9 kkub;
+    MockKKUB kkub;
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
 
-    event UnwrappedKKUB(address indexed user, uint256 amount);
+    event UnwrappedKKUB(address indexed recipient, uint256 amount);
 
     function setUp() public {
-        kkub = new WETH9();
+        kkub = new MockKKUB();
         unwrapper = new KKUBUnwrapper(address(kkub));
         vm.deal(address(unwrapper), 100 ether);
         vm.deal(alice, 100 ether);
     }
+
 
     function testUnwrapKKUB() public {
         uint256 amount = 1 ether;
@@ -87,19 +96,14 @@ contract KKUBUnwrapperTest is Test {
     }
 
     function testRevertNonOwnerFunctions() public {
-        address alice = makeAddr("alice");
-
-        // Test transferOwnership
         vm.prank(alice);
         vm.expectRevert(KKUBUnwrapper.NotOwner.selector);
         unwrapper.transferOwnership(alice);
 
-        // Test emergencyWithdraw
         vm.prank(alice);
         vm.expectRevert(KKUBUnwrapper.NotOwner.selector);
         unwrapper.emergencyWithdraw();
 
-        // Test emergencyWithdrawTokens
         vm.prank(alice);
         vm.expectRevert(KKUBUnwrapper.NotOwner.selector);
         unwrapper.emergencyWithdrawTokens(address(kkub));
