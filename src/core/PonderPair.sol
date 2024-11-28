@@ -7,6 +7,7 @@ import "../interfaces/IPonderFactory.sol";
 import "../interfaces/IPonderCallee.sol";
 import "../libraries/Math.sol";
 import "../libraries/UQ112x112.sol";
+import "forge-std/console.sol";
 
 contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
     using UQ112x112 for uint224;
@@ -85,45 +86,23 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
         emit Sync(reserve0, reserve1);
     }
 
-    function _mintFee(uint112 _reserve0, uint112 _reserve1) private returns (bool feeOn) {
-        address feeTo = IPonderFactory(factory).feeTo();
-        feeOn = feeTo != address(0);
-        uint256 _kLast = kLast;
-
-        if (feeOn) {
-            if (_kLast != 0) {
-                uint256 rootK = Math.sqrt(uint256(_reserve0) * _reserve1);
-                uint256 rootKLast = Math.sqrt(_kLast);
-                if (rootK > rootKLast) {
-                    uint256 _totalSupplyValue = totalSupply();  // store the function call result
-                    uint256 numerator = _totalSupplyValue * (rootK - rootKLast);
-                    uint256 denominator = rootK * 5 + rootKLast;
-                    uint256 liquidity = numerator / denominator;
-                    if (liquidity > 0) _mint(feeTo, liquidity);
-                }
-            }
-        } else if (_kLast != 0) {
-            kLast = 0;
-        }
-    }
-
-    function mint(address to) external override lock returns (uint256 liquidity) {
+    function mint(address to) external lock returns (uint256 liquidity) {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves();
         uint256 balance0 = IERC20(token0).balanceOf(address(this));
         uint256 balance1 = IERC20(token1).balanceOf(address(this));
         uint256 amount0 = balance0 - _reserve0;
         uint256 amount1 = balance1 - _reserve1;
 
-        bool feeOn = _mintFee(_reserve0, _reserve1);
+        bool feeOn = _mintFee(_reserve0, _reserve1);  // Collect fees first
         uint256 _totalSupply = totalSupply();
 
         if (_totalSupply == 0) {
-            _mint(address(1), MINIMUM_LIQUIDITY);
             liquidity = Math.sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
+            _mint(address(1), MINIMUM_LIQUIDITY);
         } else {
             liquidity = Math.min(
-                (amount0 * _totalSupply) / _reserve0,
-                (amount1 * _totalSupply) / _reserve1
+                amount0 * _totalSupply / _reserve0,
+                amount1 * _totalSupply / _reserve1
             );
         }
 
@@ -131,44 +110,50 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
         _mint(to, liquidity);
 
         _update(balance0, balance1, _reserve0, _reserve1);
+
+        // Update kLast after everything else
         if (feeOn) kLast = uint256(reserve0) * reserve1;
+
         emit Mint(msg.sender, amount0, amount1);
     }
 
-    function burn(address to) external override lock returns (uint256 amount0, uint256 amount1) {
-        (uint112 _reserve0, uint112 _reserve1,) = getReserves();
-        address _token0 = token0;
-        address _token1 = token1;
-        uint256 balance0 = IERC20(_token0).balanceOf(address(this));
-        uint256 balance1 = IERC20(_token1).balanceOf(address(this));
-        uint256 liquidity = this.balanceOf(address(this));  // Updated this line
+    function _mintFee(uint112 _reserve0, uint112 _reserve1) private returns (bool feeOn) {
+        address feeTo = IPonderFactory(factory).feeTo();
+        feeOn = feeTo != address(0);
+        uint256 _kLast = kLast; // gas savings
 
-        bool feeOn = _mintFee(_reserve0, _reserve1);
-        uint256 _totalSupply = totalSupply();
+        if (feeOn) {
+            if (_kLast != 0) {
+                uint256 currentK = uint256(_reserve0) * uint256(_reserve1);
+                uint256 rootK = Math.sqrt(currentK);
+                uint256 rootKLast = Math.sqrt(_kLast);
 
-        amount0 = (liquidity * balance0) / _totalSupply;
-        amount1 = (liquidity * balance1) / _totalSupply;
-        require(amount0 > 0 && amount1 > 0, "INSUFFICIENT_LIQUIDITY_BURNED");
+                if (rootK > rootKLast) {
+                    uint256 numerator = totalSupply() * (rootK - rootKLast);
+                    uint256 denominator = rootK * 5 + rootKLast;
+                    uint256 liquidity = numerator / denominator;
 
-        _burn(address(this), liquidity);
-        _safeTransfer(_token0, to, amount0);
-        _safeTransfer(_token1, to, amount1);
+                    if (liquidity > 0) {
+                        _mint(feeTo, liquidity);
+                    }
+                }
+            }
 
-        balance0 = IERC20(_token0).balanceOf(address(this));
-        balance1 = IERC20(_token1).balanceOf(address(this));
+            // Update kLast AFTER fee calculation
+            kLast = uint256(_reserve0) * uint256(_reserve1);
+        } else if (_kLast != 0) {
+            kLast = 0;
+        }
 
-        _update(balance0, balance1, _reserve0, _reserve1);
-        if (feeOn) kLast = uint256(reserve0) * reserve1;
-        emit Burn(msg.sender, amount0, amount1, to);
+        return feeOn;
     }
 
-    function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external {
+    function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external lock {
         if (amount0Out == 0 && amount1Out == 0) revert InsufficientOutputAmount();
 
         (uint112 _reserve0, uint112 _reserve1,) = getReserves();
         if (amount0Out > _reserve0 || amount1Out > _reserve1) revert InsufficientLiquidity();
 
-        // Create local variables that will be modified
         uint256 balance0;
         uint256 balance1;
         { // scope for _token{0,1}, avoids stack too deep errors
@@ -200,7 +185,45 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
         }
 
         _update(balance0, balance1, _reserve0, _reserve1);
+
+
         emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
+    }
+
+    function getKLast() external view returns (uint256) {
+        return kLast;
+    }
+
+    function burn(address to) external override lock returns (uint256 amount0, uint256 amount1) {
+        (uint112 _reserve0, uint112 _reserve1,) = getReserves();
+        address _token0 = token0;
+        address _token1 = token1;
+        uint256 balance0 = IERC20(_token0).balanceOf(address(this));
+        uint256 balance1 = IERC20(_token1).balanceOf(address(this));
+        uint256 liquidity = this.balanceOf(address(this));
+
+        bool feeOn = _mintFee(_reserve0, _reserve1);  // Collect fees first
+        uint256 _totalSupply = totalSupply();
+
+        amount0 = (liquidity * balance0) / _totalSupply;
+        amount1 = (liquidity * balance1) / _totalSupply;
+        require(amount0 > 0 && amount1 > 0, "INSUFFICIENT_LIQUIDITY_BURNED");
+
+        _burn(address(this), liquidity);
+        _safeTransfer(_token0, to, amount0);
+        _safeTransfer(_token1, to, amount1);
+
+        balance0 = IERC20(_token0).balanceOf(address(this));
+        balance1 = IERC20(_token1).balanceOf(address(this));
+
+        _update(balance0, balance1, _reserve0, _reserve1);
+
+        // Update kLast if fees are enabled
+        if (feeOn) {
+            kLast = uint256(reserve0) * reserve1;
+        }
+
+        emit Burn(msg.sender, amount0, amount1, to);
     }
 
     // Add these error definitions if not already present

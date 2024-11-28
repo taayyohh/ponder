@@ -25,11 +25,23 @@ contract PonderFactoryTest is Test {
         address token0 = address(tokenA) < address(tokenB) ? address(tokenA) : address(tokenB);
         address token1 = address(tokenA) < address(tokenB) ? address(tokenB) : address(tokenA);
 
-        vm.expectEmit(true, true, true, true);
-        emit PairCreated(token0, token1, computePairAddress(token0, token1), 1);
+        // Get the expected pair address
+        bytes32 salt = keccak256(abi.encodePacked(token0, token1));
+        address expectedPair = address(uint160(uint256(keccak256(abi.encodePacked(
+            hex'ff',
+            address(factory),
+            salt,
+            factory.INIT_CODE_PAIR_HASH()
+        )))));
 
+        // Now use the computed address in expectEmit
+        vm.expectEmit(true, true, true, true);
+        emit PairCreated(token0, token1, expectedPair, 1);
+
+        // Create the pair
         address pair = factory.createPair(address(tokenA), address(tokenB));
 
+        // Verify results
         assertFalse(pair == address(0));
         assertEq(factory.allPairsLength(), 1);
         assertEq(factory.allPairs(0), pair);
