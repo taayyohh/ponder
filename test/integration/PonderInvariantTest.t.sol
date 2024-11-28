@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "forge-std/Test.sol";
-import "forge-std/StdInvariant.sol";
 import "../../src/core/PonderFactory.sol";
 import "../../src/core/PonderPair.sol";
 import "../../src/periphery/PonderRouter.sol";
 import "../mocks/ERC20Mint.sol";
+import "../mocks/MockKKUBUnwrapper.sol";
 import "../mocks/WETH9.sol";
+import "forge-std/StdInvariant.sol";
+import "forge-std/Test.sol";
 
 contract PonderInvariantTest is StdInvariant, Test {
     PonderFactory factory;
@@ -30,7 +31,8 @@ contract PonderInvariantTest is StdInvariant, Test {
         // Deploy core contracts
         weth = new WETH9();
         factory = new PonderFactory(address(this));
-        router = new PonderRouter(address(factory), address(weth));
+        MockKKUBUnwrapper unwrapper = new MockKKUBUnwrapper();
+        router = new PonderRouter(address(factory), address(weth), address(unwrapper));
 
         // Deploy tokens
         tokenA = new ERC20Mint("Token A", "TKNA");

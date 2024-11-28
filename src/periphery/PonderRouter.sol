@@ -6,7 +6,11 @@ import "../interfaces/IPonderPair.sol";
 import "../interfaces/IERC20.sol";
 import "../interfaces/IWETH.sol";
 import "../libraries/TransferHelper.sol";
+import "./KKUBUnwrapper.sol";
 
+/// @title Ponder Router for swapping tokens and managing liquidity
+/// @notice Handles routing of trades and liquidity provision between pairs
+/// @dev Manages interactions with PonderPair contracts and handles unwrapping of KKUB
 contract PonderRouter {
     error ExpiredDeadline();
     error InsufficientOutputAmount();
@@ -18,24 +22,42 @@ contract PonderRouter {
     error ZeroAddress();
     error ExcessiveInputAmount();
 
+    /// @notice Address of KKUBUnwrapper contract used for unwrapping KKUB
+    address payable public immutable kkubUnwrapper;
+    /// @notice Factory contract for creating and managing pairs
     IPonderFactory public immutable factory;
+    /// @notice Address of WETH/KKUB contract
     address public immutable WETH;
 
+    /// @dev Modifier to check if deadline has passed
     modifier ensure(uint256 deadline) {
         if (deadline < block.timestamp) revert ExpiredDeadline();
         _;
     }
 
-    constructor(address _factory, address _WETH) {
+    /// @notice Contract constructor
+    /// @param _factory Address of PonderFactory contract
+    /// @param _WETH Address of WETH/KKUB contract
+    /// @param _kkubUnwrapper Address of KKUBUnwrapper contract
+    constructor(address _factory, address _WETH, address _kkubUnwrapper) {
         factory = IPonderFactory(_factory);
         WETH = _WETH;
+        kkubUnwrapper = payable(_kkubUnwrapper);
     }
 
     receive() external payable {
         assert(msg.sender == WETH);
     }
 
-    // **** ADD LIQUIDITY ****
+    /// @notice Internal function to calculate optimal liquidity amounts
+    /// @param tokenA First token address
+    /// @param tokenB Second token address
+    /// @param amountADesired Desired amount of tokenA
+    /// @param amountBDesired Desired amount of tokenB
+    /// @param amountAMin Minimum acceptable amount of tokenA
+    /// @param amountBMin Minimum acceptable amount of tokenB
+    /// @return amountA Final amount of tokenA
+    /// @return amountB Final amount of tokenB
     function _addLiquidity(
         address tokenA,
         address tokenB,
@@ -66,6 +88,15 @@ contract PonderRouter {
         }
     }
 
+    /// @notice Add liquidity to a pair
+    /// @param tokenA First token address
+    /// @param tokenB Second token address
+    /// @param amountADesired Desired amount of tokenA
+    /// @param amountBDesired Desired amount of tokenB
+    /// @param amountAMin Minimum acceptable amount of tokenA
+    /// @param amountBMin Minimum acceptable amount of tokenB
+    /// @param to Address to receive LP tokens
+    /// @param deadline Maximum timestamp for execution
     function addLiquidity(
         address tokenA,
         address tokenB,
@@ -87,6 +118,13 @@ contract PonderRouter {
         liquidity = IPonderPair(pair).mint(to);
     }
 
+    /// @notice Add liquidity to an ETH/KKUB pair
+    /// @param token Token address to pair with ETH/KKUB
+    /// @param amountTokenDesired Desired amount of token
+    /// @param amountTokenMin Minimum acceptable amount of token
+    /// @param amountETHMin Minimum acceptable amount of ETH/KKUB
+    /// @param to Address to receive LP tokens
+    /// @param deadline Maximum timestamp for execution
     function addLiquidityETH(
         address token,
         uint256 amountTokenDesired,
@@ -112,7 +150,14 @@ contract PonderRouter {
         }
     }
 
-    // **** REMOVE LIQUIDITY ****
+    /// @notice Remove liquidity from a pair
+    /// @param tokenA First token address
+    /// @param tokenB Second token address
+    /// @param liquidity Amount of LP tokens to burn
+    /// @param amountAMin Minimum amount of tokenA to receive
+    /// @param amountBMin Minimum amount of tokenB to receive
+    /// @param to Address to receive tokens
+    /// @param deadline Maximum timestamp for execution
     function removeLiquidity(
         address tokenA,
         address tokenB,
@@ -129,6 +174,13 @@ contract PonderRouter {
         if (amountB < amountBMin) revert InsufficientBAmount();
     }
 
+    /// @notice Remove liquidity from an ETH/KKUB pair and unwrap KKUB
+    /// @param token Token address paired with ETH/KKUB
+    /// @param liquidity Amount of LP tokens to burn
+    /// @param amountTokenMin Minimum amount of token to receive
+    /// @param amountETHMin Minimum amount of ETH to receive
+    /// @param to Address to receive tokens and ETH
+    /// @param deadline Maximum timestamp for execution
     function removeLiquidityETH(
         address token,
         uint256 liquidity,
@@ -145,11 +197,17 @@ contract PonderRouter {
             deadline
         );
         TransferHelper.safeTransfer(token, to, amountToken);
-        IWETH(WETH).withdraw(amountETH);
-        TransferHelper.safeTransferETH(to, amountETH);
+        IERC20(WETH).approve(kkubUnwrapper, amountETH);
+        KKUBUnwrapper(kkubUnwrapper).unwrapKKUB(amountETH, to);
     }
 
-    // **** REMOVE LIQUIDITY (supporting fee-on-transfer tokens) ****
+    /// @notice Remove liquidity from an ETH/KKUB pair supporting fee-on-transfer tokens
+    /// @param token Token address paired with ETH/KKUB
+    /// @param liquidity Amount of LP tokens to burn
+    /// @param amountTokenMin Minimum amount of token to receive
+    /// @param amountETHMin Minimum amount of ETH to receive
+    /// @param to Address to receive tokens and ETH
+    /// @param deadline Maximum timestamp for execution
     function removeLiquidityETHSupportingFeeOnTransferTokens(
         address token,
         uint256 liquidity,
@@ -166,11 +224,14 @@ contract PonderRouter {
             deadline
         );
         TransferHelper.safeTransfer(token, to, IERC20(token).balanceOf(address(this)));
-        IWETH(WETH).withdraw(amountETH);
-        TransferHelper.safeTransferETH(to, amountETH);
+        IERC20(WETH).approve(kkubUnwrapper, amountETH);
+        KKUBUnwrapper(kkubUnwrapper).unwrapKKUB(amountETH, to);
     }
 
-    // **** SWAP ****
+    /// @notice Internal swap function
+    /// @param amounts Array of token amounts
+    /// @param path Array of token addresses in swap path
+    /// @param _to Address to receive output tokens
     function _swap(uint256[] memory amounts, address[] memory path, address _to) internal virtual {
         for (uint256 i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
@@ -184,6 +245,12 @@ contract PonderRouter {
         }
     }
 
+    /// @notice Swap exact tokens for tokens
+    /// @param amountIn Amount of input tokens
+    /// @param amountOutMin Minimum amount of output tokens
+    /// @param path Array of token addresses in swap path
+    /// @param to Address to receive output tokens
+    /// @param deadline Maximum timestamp for execution
     function swapExactTokensForTokens(
         uint256 amountIn,
         uint256 amountOutMin,
@@ -197,6 +264,12 @@ contract PonderRouter {
         _swap(amounts, path, to);
     }
 
+    /// @notice Swap tokens for exact tokens
+    /// @param amountOut Exact amount of output tokens
+    /// @param amountInMax Maximum amount of input tokens
+    /// @param path Array of token addresses in swap path
+    /// @param to Address to receive tokens
+    /// @param deadline Maximum timestamp for execution
     function swapTokensForExactTokens(
         uint256 amountOut,
         uint256 amountInMax,
@@ -210,6 +283,11 @@ contract PonderRouter {
         _swap(amounts, path, to);
     }
 
+    /// @notice Swap exact ETH for tokens
+    /// @param amountOutMin Minimum amount of tokens to receive
+    /// @param path Array of token addresses in swap path
+    /// @param to Address to receive tokens
+    /// @param deadline Maximum timestamp for execution
     function swapExactETHForTokens(
         uint256 amountOutMin,
         address[] calldata path,
@@ -224,6 +302,12 @@ contract PonderRouter {
         _swap(amounts, path, to);
     }
 
+    /// @notice Swap tokens for exact ETH using KKUB unwrapper
+    /// @param amountOut Exact amount of ETH to receive
+    /// @param amountInMax Maximum amount of tokens to spend
+    /// @param path Array of token addresses in swap path
+    /// @param to Address to receive ETH
+    /// @param deadline Maximum timestamp for execution
     function swapTokensForExactETH(
         uint256 amountOut,
         uint256 amountInMax,
@@ -236,10 +320,16 @@ contract PonderRouter {
         if (amounts[0] > amountInMax) revert ExcessiveInputAmount();
         TransferHelper.safeTransferFrom(path[0], msg.sender, factory.getPair(path[0], path[1]), amounts[0]);
         _swap(amounts, path, address(this));
-        IWETH(WETH).withdraw(amountOut);
-        TransferHelper.safeTransferETH(to, amountOut);
+        IERC20(WETH).approve(kkubUnwrapper, amountOut);
+        KKUBUnwrapper(kkubUnwrapper).unwrapKKUB(amountOut, to);
     }
 
+    /// @notice Swap exact tokens for ETH using KKUB unwrapper
+    /// @param amountIn Amount of tokens to spend
+    /// @param amountOutMin Minimum amount of ETH to receive
+    /// @param path Array of token addresses in swap path
+    /// @param to Address to receive ETH
+    /// @param deadline Maximum timestamp for execution
     function swapExactTokensForETH(
         uint256 amountIn,
         uint256 amountOutMin,
@@ -252,10 +342,16 @@ contract PonderRouter {
         if (amounts[amounts.length - 1] < amountOutMin) revert InsufficientOutputAmount();
         TransferHelper.safeTransferFrom(path[0], msg.sender, factory.getPair(path[0], path[1]), amounts[0]);
         _swap(amounts, path, address(this));
-        IWETH(WETH).withdraw(amounts[amounts.length - 1]);
-        TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
+        uint256 amountOut = amounts[amounts.length - 1];
+        IERC20(WETH).approve(kkubUnwrapper, amountOut);
+        KKUBUnwrapper(kkubUnwrapper).unwrapKKUB(amountOut, to);
     }
 
+    /// @notice Swap ETH for exact tokens
+    /// @param amountOut Exact amount of tokens to receive
+    /// @param path Array of token addresses in swap path
+    /// @param to Address to receive tokens
+    /// @param deadline Maximum timestamp for execution
     function swapETHForExactTokens(
         uint256 amountOut,
         address[] calldata path,
@@ -273,7 +369,12 @@ contract PonderRouter {
         }
     }
 
-    // **** SWAP (supporting fee-on-transfer tokens) ****
+    /// @notice Swap exact tokens for tokens supporting fee-on-transfer tokens
+    /// @param amountIn Amount of input tokens
+    /// @param amountOutMin Minimum amount of output tokens
+    /// @param path Array of token addresses in swap path
+    /// @param to Address to receive tokens
+    /// @param deadline Maximum timestamp for execution
     function swapExactTokensForTokensSupportingFeeOnTransferTokens(
         uint256 amountIn,
         uint256 amountOutMin,
@@ -289,6 +390,11 @@ contract PonderRouter {
         }
     }
 
+    /// @notice Swap exact ETH for tokens supporting fee-on-transfer tokens
+    /// @param amountOutMin Minimum amount of tokens to receive
+    /// @param path Array of token addresses in swap path
+    /// @param to Address to receive tokens
+    /// @param deadline Maximum timestamp for execution
     function swapExactETHForTokensSupportingFeeOnTransferTokens(
         uint256 amountOutMin,
         address[] calldata path,
@@ -306,6 +412,12 @@ contract PonderRouter {
         }
     }
 
+    /// @notice Swap exact tokens for ETH supporting fee-on-transfer tokens using KKUB unwrapper
+    /// @param amountIn Amount of tokens to swap
+    /// @param amountOutMin Minimum amount of ETH to receive
+    /// @param path Array of token addresses in swap path
+    /// @param to Address to receive ETH
+    /// @param deadline Maximum timestamp for execution
     function swapExactTokensForETHSupportingFeeOnTransferTokens(
         uint256 amountIn,
         uint256 amountOutMin,
@@ -318,11 +430,13 @@ contract PonderRouter {
         _swapSupportingFeeOnTransferTokens(path, address(this));
         uint256 amountOut = IERC20(WETH).balanceOf(address(this));
         if (amountOut < amountOutMin) revert InsufficientOutputAmount();
-        IWETH(WETH).withdraw(amountOut);
-        TransferHelper.safeTransferETH(to, amountOut);
+        IERC20(WETH).approve(kkubUnwrapper, amountOut);
+        KKUBUnwrapper(kkubUnwrapper).unwrapKKUB(amountOut, to);
     }
 
-    // **** INTERNAL FUNCTIONS ****
+    /// @notice Internal swap function for fee-on-transfer tokens
+    /// @param path Array of token addresses in swap path
+    /// @param _to Address to receive tokens
     function _swapSupportingFeeOnTransferTokens(address[] memory path, address _to) internal virtual {
         for (uint256 i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
@@ -331,7 +445,6 @@ contract PonderRouter {
             uint256 amountInput;
             uint256 amountOutput;
             {
-                // scope to avoid stack too deep errors
                 (uint256 reserve0, uint256 reserve1,) = pair.getReserves();
                 (uint256 reserveInput, uint256 reserveOutput) = input == token0
                     ? (reserve0, reserve1)
@@ -347,7 +460,11 @@ contract PonderRouter {
         }
     }
 
-    // **** LIBRARY FUNCTIONS ****
+    /// @notice Get amount of tokenB for a given amount of tokenA
+    /// @param amountA Amount of tokenA
+    /// @param reserveA Reserve of tokenA in pair
+    /// @param reserveB Reserve of tokenB in pair
+    /// @return amountB Amount of tokenB
     function quote(uint256 amountA, uint256 reserveA, uint256 reserveB)
     public
     pure
@@ -359,6 +476,11 @@ contract PonderRouter {
         amountB = (amountA * reserveB) / reserveA;
     }
 
+    /// @notice Get reserves for a pair
+    /// @param tokenA First token address
+    /// @param tokenB Second token address
+    /// @return reserveA Reserve of tokenA
+    /// @return reserveB Reserve of tokenB
     function getReserves(address tokenA, address tokenB)
     public
     view
@@ -369,6 +491,11 @@ contract PonderRouter {
         (reserveA, reserveB) = tokenA == token0 ? (reserve0, reserve1) : (reserve1, reserve0);
     }
 
+    /// @notice Sort token addresses
+    /// @param tokenA First token address
+    /// @param tokenB Second token address
+    /// @return token0 Lower token address
+    /// @return token1 Higher token address
     function sortTokens(address tokenA, address tokenB)
     public
     pure
@@ -379,6 +506,10 @@ contract PonderRouter {
         if (token0 == address(0)) revert ZeroAddress();
     }
 
+    /// @notice Get output amounts for path
+    /// @param amountIn Input amount
+    /// @param path Array of token addresses
+    /// @return amounts Array of input/output amounts for path
     function getAmountsOut(uint256 amountIn, address[] memory path)
     public
     view
@@ -394,6 +525,10 @@ contract PonderRouter {
         }
     }
 
+    /// @notice Get required input amount for desired output
+    /// @param amountOut Desired output amount
+    /// @param path Array of token addresses
+    /// @return amounts Array of input/output amounts for path
     function getAmountsIn(uint256 amountOut, address[] memory path)
     public
     view
@@ -409,6 +544,11 @@ contract PonderRouter {
         }
     }
 
+    /// @notice Calculate output amount for an exact input amount
+    /// @param amountIn Amount of input tokens
+    /// @param reserveIn Input token reserve
+    /// @param reserveOut Output token reserve
+    /// @return amountOut Amount of output tokens
     function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut)
     public
     pure
@@ -423,6 +563,11 @@ contract PonderRouter {
         amountOut = numerator / denominator;
     }
 
+    /// @notice Calculate required input amount for an exact output amount
+    /// @param amountOut Desired output amount
+    /// @param reserveIn Input token reserve
+    /// @param reserveOut Output token reserve
+    /// @return amountIn Required input amount
     function getAmountIn(uint256 amountOut, uint256 reserveIn, uint256 reserveOut)
     public
     pure
@@ -436,7 +581,6 @@ contract PonderRouter {
         amountIn = (numerator / denominator) + 1;
     }
 
-    // Additional error definitions
     error InsufficientAmount();
     error InsufficientInputAmount();
 }

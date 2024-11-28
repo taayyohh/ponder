@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "forge-std/Test.sol";
-import "../mocks/ERC20Mint.sol";
-import "../mocks/WETH9.sol";
 import "../../src/core/PonderFactory.sol";
 import "../../src/core/PonderPair.sol";
-import "../../src/periphery/PonderRouter.sol";
 import "../../src/interfaces/IWETH.sol";
+import "../../src/periphery/PonderRouter.sol";
+import "../mocks/ERC20Mint.sol";
+import "../mocks/MockKKUBUnwrapper.sol";
+import "../mocks/WETH9.sol";
+import "forge-std/Test.sol";
 
 contract PonderRouterTest is Test {
     PonderFactory factory;
@@ -33,7 +34,8 @@ contract PonderRouterTest is Test {
         // Deploy core contracts
         factory = new PonderFactory(address(this));
         weth = IWETH(address(new WETH9()));
-        router = new PonderRouter(address(factory), address(weth));
+        MockKKUBUnwrapper unwrapper = new MockKKUBUnwrapper();
+        router = new PonderRouter(address(factory), address(weth), address(unwrapper));
 
         // Deploy test tokens
         tokenA = new ERC20Mint("Token A", "TKNA");

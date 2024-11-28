@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "forge-std/Test.sol";
 import "../../src/core/PonderFactory.sol";
-import "../../src/core/PonderPair.sol";
-import "../../src/periphery/PonderRouter.sol";
-import "../../src/core/PonderToken.sol";
 import "../../src/core/PonderMasterChef.sol";
+import "../../src/core/PonderPair.sol";
+import "../../src/core/PonderToken.sol";
+import "../../src/periphery/PonderRouter.sol";
 import "../mocks/ERC20Mint.sol";
+import "../mocks/MockKKUBUnwrapper.sol";
 import "../mocks/WETH9.sol";
+import "forge-std/Test.sol";
 
 interface IRouter {
     function swapExactTokensForTokens(
@@ -41,7 +42,8 @@ contract PonderIntegrationTest is Test {
         weth = new WETH9();
         ponder = new PonderToken();
         factory = new PonderFactory(address(this));
-        router = new PonderRouter(address(factory), address(weth));
+        MockKKUBUnwrapper unwrapper = new MockKKUBUnwrapper();
+        router = new PonderRouter(address(factory), address(weth), address(unwrapper));
 
         masterChef = new PonderMasterChef(
             ponder,
@@ -185,11 +187,8 @@ contract PonderIntegrationTest is Test {
         // Get final reserves
         (uint112 finalReserve0, uint112 finalReserve1,) = PonderPair(factory.getPair(address(tokenA), address(tokenB))).getReserves();
 
-        // When users swap tokenA for tokenB:
-        // - TokenA reserve should increase (users giving tokenA)
-        // - TokenB reserve should decrease (users taking tokenB)
-        assertLt(finalReserve0, initialReserve0, "TokenA reserve should have decreased");
-        assertGt(finalReserve1, initialReserve1, "TokenB reserve should have increased");
+        assertGt(finalReserve0, initialReserve0, "TokenA reserve should have increased");
+        assertLt(finalReserve1, initialReserve1, "TokenB reserve should have decreased");
 
         // Verify users received tokenB
         for (uint i = 0; i < users.length; i++) {
