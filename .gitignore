@@ -19,3 +19,5 @@ lcov.info
 
 # Node modules
 node_modules/
+
+dist/
