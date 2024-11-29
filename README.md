@@ -1,5 +1,18 @@
 # Ponder Protocol
 
+```                             
+                ╭────────╮              
+            ╭───────────────╮           
+        ╭───────────────────────╮       
+    ╭───────────────────────────────╮   
+╭───────────────────────────────────────╮
+    ╰───────────────────────────────╯   
+        ╰───────────────────────╯       
+            ╰───────────────╯           
+                ╰────────╯                
+
+```
+
 Ponder is a decentralized exchange protocol built specifically for Bitkub Chain. Building on Uniswap V2's proven foundation, Ponder introduces yield farming through the PONDER token while maintaining the core AMM functionality that powers decentralized trading.
 
 The protocol uses automated market making (AMM) to enable permissionless trading. Liquidity providers deposit pairs of tokens into pools to create trading markets. Every pool employs the constant product formula (x * y = k) to determine exchange rates, with a 0.3% fee on trades that rewards liquidity providers. The protocol's price oracle system accumulates time-weighted prices, providing TWAP (Time-Weighted Average Price) data feeds that other protocols can reliably use.
