@@ -11,6 +11,11 @@ export const ponderrouterAbi = [
         "name": "_WETH",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "_kkubUnwrapper",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -294,6 +299,19 @@ export const ponderrouterAbi = [
         "name": "reserveB",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "kkubUnwrapper",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address payable"
       }
     ],
     "stateMutability": "view"

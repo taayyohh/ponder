@@ -10,7 +10,9 @@ import "../../src/core/PonderMasterChef.sol";
 
 contract DeployBitkubScript is Script {
     uint256 constant PONDER_PER_SECOND = 0.1e18;
-    address constant KKUB = 0x1de8A5c87d421f53eE4ae398cc766e62E88e9518; // testnet - 0x1de8A5c87d421f53eE4ae398cc766e62E88e9518
+    address constant KKUB = 0x1de8A5c87d421f53eE4ae398cc766e62E88e9518;
+    // testnet - 0x1de8A5c87d421f53eE4ae398cc766e62E88e9518
+    // mainner - 0x67eBD850304c70d983B2d1b93ea79c7CD6c3F6b5
 
 
     function run() external {

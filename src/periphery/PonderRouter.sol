@@ -118,13 +118,18 @@ contract PonderRouter {
         liquidity = IPonderPair(pair).mint(to);
     }
 
+    event Debug(string message, uint256 value);
+
     /// @notice Add liquidity to an ETH/KKUB pair
-    /// @param token Token address to pair with ETH/KKUB
-    /// @param amountTokenDesired Desired amount of token
-    /// @param amountTokenMin Minimum acceptable amount of token
-    /// @param amountETHMin Minimum acceptable amount of ETH/KKUB
-    /// @param to Address to receive LP tokens
-    /// @param deadline Maximum timestamp for execution
+    /// @param token The token address to pair with ETH/KKUB
+    /// @param amountTokenDesired The desired amount of the token
+    /// @param amountTokenMin The minimum acceptable amount of the token
+    /// @param amountETHMin The minimum acceptable amount of ETH/KKUB
+    /// @param to The address that will receive LP tokens
+    /// @param deadline The maximum timestamp for execution
+    /// @return amountToken The actual amount of the token added
+    /// @return amountETH The actual amount of ETH added
+    /// @return liquidity The amount of LP tokens minted
     function addLiquidityETH(
         address token,
         uint256 amountTokenDesired,
@@ -133,17 +138,24 @@ contract PonderRouter {
         address to,
         uint256 deadline
     ) external virtual payable ensure(deadline) returns (uint256 amountToken, uint256 amountETH, uint256 liquidity) {
+        emit Debug("Before _addLiquidity", msg.value);
         (amountToken, amountETH) = _addLiquidity(
-            token, WETH,
-            amountTokenDesired, msg.value,
-            amountTokenMin, amountETHMin
+            token,
+            WETH,
+            amountTokenDesired,
+            msg.value,
+            amountTokenMin,
+            amountETHMin
         );
 
+        emit Debug("After _addLiquidity", amountToken);
         address pair = factory.getPair(token, WETH);
         TransferHelper.safeTransferFrom(token, msg.sender, pair, amountToken);
         IWETH(WETH).deposit{value: amountETH}();
         assert(IWETH(WETH).transfer(pair, amountETH));
         liquidity = IPonderPair(pair).mint(to);
+
+        emit Debug("Liquidity Added", liquidity);
 
         if (msg.value > amountETH) {
             TransferHelper.safeTransferETH(msg.sender, msg.value - amountETH);
@@ -151,13 +163,15 @@ contract PonderRouter {
     }
 
     /// @notice Remove liquidity from a pair
-    /// @param tokenA First token address
-    /// @param tokenB Second token address
-    /// @param liquidity Amount of LP tokens to burn
-    /// @param amountAMin Minimum amount of tokenA to receive
-    /// @param amountBMin Minimum amount of tokenB to receive
-    /// @param to Address to receive tokens
-    /// @param deadline Maximum timestamp for execution
+    /// @param tokenA The first token address in the pair
+    /// @param tokenB The second token address in the pair
+    /// @param liquidity The amount of LP tokens to burn
+    /// @param amountAMin The minimum amount of tokenA to receive
+    /// @param amountBMin The minimum amount of tokenB to receive
+    /// @param to The address to receive the tokens
+    /// @param deadline The maximum timestamp for execution
+    /// @return amountA The amount of tokenA received
+    /// @return amountB The amount of tokenB received
     function removeLiquidity(
         address tokenA,
         address tokenB,

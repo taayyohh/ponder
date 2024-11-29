@@ -12,7 +12,8 @@ const contracts = [
     'PonderPair',
     'PonderRouter',
     'PonderToken',
-    'PonderMasterChef'
+    'PonderMasterChef',
+    'KKUBUnwrapper'
 ];
 
 // Ensure directories exist
