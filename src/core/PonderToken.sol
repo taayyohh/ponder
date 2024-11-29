@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "./PonderERC20.sol";
+import "forge-std/console.sol";
 
 contract PonderToken is PonderERC20 {
     /// @notice Address with minting privileges for farming rewards
@@ -94,7 +95,26 @@ contract PonderToken is PonderERC20 {
         // Farming allocation (40%, 400M) will be handled by MasterChef
     }
 
-    /// @notice Claims vested team tokens
+    function _calculateVestedAmount() internal view returns (uint256) {
+        if (block.timestamp < teamVestingStart) return 0;
+
+        uint256 timeElapsed = block.timestamp - teamVestingStart;
+        if (timeElapsed > VESTING_DURATION) {
+            timeElapsed = VESTING_DURATION; // Cap elapsed time
+        }
+
+        uint256 totalVested = (TEAM_ALLOCATION * timeElapsed) / VESTING_DURATION;
+
+        console.log("Time elapsed:", timeElapsed);
+        console.log("Total vested:", totalVested);
+        console.log("Team tokens claimed:", teamTokensClaimed);
+
+        uint256 claimable = totalVested > teamTokensClaimed ? totalVested - teamTokensClaimed : 0;
+        console.log("Claimable amount:", claimable);
+
+        return claimable;
+    }
+
     function claimTeamTokens() external {
         if (msg.sender != teamReserve) revert Forbidden();
         if (block.timestamp < teamVestingStart) revert VestingNotStarted();
@@ -102,23 +122,15 @@ contract PonderToken is PonderERC20 {
         uint256 vestedAmount = _calculateVestedAmount();
         if (vestedAmount == 0) revert NoTokensAvailable();
 
+        console.log("Claiming vested amount:", vestedAmount);
+
+        // Update before minting
         teamTokensClaimed += vestedAmount;
         _mint(teamReserve, vestedAmount);
 
         emit TeamTokensClaimed(vestedAmount);
     }
 
-    function _calculateVestedAmount() internal view returns (uint256) {
-        if (block.timestamp < teamVestingStart) return 0;
-
-        uint256 timeElapsed = block.timestamp - teamVestingStart;
-        if (timeElapsed > VESTING_DURATION) {
-            timeElapsed = VESTING_DURATION;
-        }
-
-        uint256 totalVested = (TEAM_ALLOCATION * timeElapsed) / VESTING_DURATION;
-        return totalVested - teamTokensClaimed;
-    }
 
     /// @notice Mint new tokens for farming rewards, capped by maximum supply
     function mint(address to, uint256 amount) external onlyMinter {
