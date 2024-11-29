@@ -36,7 +36,7 @@ contract PonderMasterChefTest is Test {
 
     function setUp() public {
         // Deploy core contracts
-        ponder = new PonderToken();
+        ponder = new PonderToken(owner,owner,owner);
         factory = new PonderFactory(address(this));
 
         // Deploy MasterChef with start time = now

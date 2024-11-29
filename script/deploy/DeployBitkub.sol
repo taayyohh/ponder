@@ -10,7 +10,9 @@ import "../../src/core/PonderMasterChef.sol";
 import "../../src/launch/FiveFiveFiveLauncher.sol";
 
 contract DeployBitkubScript is Script {
-    uint256 constant PONDER_PER_SECOND = 0.1e18;
+    // Total farming allocation is 400M PONDER over 4 years
+    // This equals approximately 3.168 PONDER per second (400M / (4 * 365 * 24 * 60 * 60))
+    uint256 constant PONDER_PER_SECOND = 3168000000000000000; // 3.168 ether
     address constant KKUB = 0x1de8A5c87d421f53eE4ae398cc766e62E88e9518;
     // testnet - 0x1de8A5c87d421f53eE4ae398cc766e62E88e9518
     // mainner - 0x67eBD850304c70d983B2d1b93ea79c7CD6c3F6b5
@@ -18,11 +20,18 @@ contract DeployBitkubScript is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address treasury = vm.envAddress("TREASURY_ADDRESS");
+        address teamReserve = vm.envAddress("TEAM_RESERVE_ADDRESS");
+        address marketing = vm.envAddress("MARKETING_ADDRESS");
         address deployer = vm.addr(deployerPrivateKey);
 
         vm.startBroadcast(deployerPrivateKey);
 
-        PonderToken ponder = new PonderToken();
+        // Deploy with new constructor params
+        PonderToken ponder = new PonderToken(
+            treasury,
+            teamReserve,
+            marketing
+        );
         _verifyContract("PonderToken", address(ponder));
 
         PonderFactory factory = new PonderFactory(deployer);
@@ -79,6 +88,14 @@ contract DeployBitkubScript is Script {
         console.log("Min to Launch:", 165 ether, "KUB");
         console.log("Min Contribution:", 0.55 ether, "KUB");
         console.log("LP Lock Period:", 180 days, "seconds");
+
+        console.log("\nToken Allocation Summary:");
+        console.log("--------------------------------");
+        console.log("Initial Liquidity (10%):", uint256(100_000_000 * 1e18));
+        console.log("Liquidity Mining (40%):", uint256(400_000_000 * 1e18));
+        console.log("Team/Reserve (15%):", uint256(150_000_000 * 1e18));
+        console.log("Marketing/Community (10%):", uint256(100_000_000 * 1e18));
+        console.log("Treasury/DAO (25%):", uint256(250_000_000 * 1e18));
     }
 
     function _verifyContract(string memory name, address contractAddress) internal view {

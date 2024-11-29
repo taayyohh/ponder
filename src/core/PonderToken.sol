@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import "./PonderERC20.sol";
 
 contract PonderToken is PonderERC20 {
-    /// @notice Address with minting privileges
+    /// @notice Address with minting privileges for farming rewards
     address public minter;
 
     /// @notice Total cap on token supply
@@ -22,14 +22,39 @@ contract PonderToken is PonderERC20 {
     /// @notice Future owner in 2-step transfer
     address public pendingOwner;
 
+    /// @notice Treasury/DAO address
+    address public treasury;
+
+    /// @notice Team/Reserve address
+    address public teamReserve;
+
+    /// @notice Marketing address
+    address public marketing;
+
+    /// @notice Vesting start timestamp for team allocation
+    uint256 public teamVestingStart;
+
+    /// @notice Amount of team tokens claimed
+    uint256 public teamTokensClaimed;
+
+    /// @notice Total amount for team vesting
+    uint256 public constant TEAM_ALLOCATION = 150_000_000e18; // 15%
+
+    /// @notice Vesting duration for team allocation (1 year)
+    uint256 public constant VESTING_DURATION = 365 days;
+
     error Forbidden();
     error MintingDisabled();
     error SupplyExceeded();
     error ZeroAddress();
+    error VestingNotStarted();
+    error NoTokensAvailable();
+    error VestingNotEnded();
 
     event MinterUpdated(address indexed previousMinter, address indexed newMinter);
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event TeamTokensClaimed(uint256 amount);
 
     modifier onlyOwner {
         if (msg.sender != owner) revert Forbidden();
@@ -41,14 +66,61 @@ contract PonderToken is PonderERC20 {
         _;
     }
 
-    constructor() PonderERC20("Ponder", "PONDER") {
+    constructor(
+        address _treasury,
+        address _teamReserve,
+        address _marketing
+    ) PonderERC20("Ponder", "PONDER") {
+        if (_treasury == address(0) || _teamReserve == address(0) || _marketing == address(0)) revert ZeroAddress();
+
         owner = msg.sender;
         deploymentTime = block.timestamp;
+        treasury = _treasury;
+        teamReserve = _teamReserve;
+        marketing = _marketing;
+        teamVestingStart = block.timestamp;
+
+        // Initial distributions
+        // Treasury/DAO: 25% (250M)
+        _mint(treasury, 250_000_000e18);
+
+        // Initial Liquidity: 10% (100M)
+        _mint(address(this), 100_000_000e18);
+
+        // Marketing: 10% (100M)
+        _mint(marketing, 100_000_000e18);
+
+        // Note: Team allocation (15%, 150M) is vested
+        // Farming allocation (40%, 400M) will be handled by MasterChef
     }
 
-    /// @notice Mint new tokens, capped by maximum supply
-    /// @param to Address to receive tokens
-    /// @param amount Amount of tokens to mint
+    /// @notice Claims vested team tokens
+    function claimTeamTokens() external {
+        if (msg.sender != teamReserve) revert Forbidden();
+        if (block.timestamp < teamVestingStart) revert VestingNotStarted();
+
+        uint256 vestedAmount = _calculateVestedAmount();
+        if (vestedAmount == 0) revert NoTokensAvailable();
+
+        teamTokensClaimed += vestedAmount;
+        _mint(teamReserve, vestedAmount);
+
+        emit TeamTokensClaimed(vestedAmount);
+    }
+
+    function _calculateVestedAmount() internal view returns (uint256) {
+        if (block.timestamp < teamVestingStart) return 0;
+
+        uint256 timeElapsed = block.timestamp - teamVestingStart;
+        if (timeElapsed > VESTING_DURATION) {
+            timeElapsed = VESTING_DURATION;
+        }
+
+        uint256 totalVested = (TEAM_ALLOCATION * timeElapsed) / VESTING_DURATION;
+        return totalVested - teamTokensClaimed;
+    }
+
+    /// @notice Mint new tokens for farming rewards, capped by maximum supply
     function mint(address to, uint256 amount) external onlyMinter {
         if (block.timestamp > deploymentTime + MINTING_END) revert MintingDisabled();
         if (totalSupply() + amount > MAXIMUM_SUPPLY) revert SupplyExceeded();
@@ -56,7 +128,6 @@ contract PonderToken is PonderERC20 {
     }
 
     /// @notice Update minting privileges
-    /// @param _minter New minter address
     function setMinter(address _minter) external onlyOwner {
         if (_minter == address(0)) revert ZeroAddress();
         address oldMinter = minter;
@@ -65,7 +136,6 @@ contract PonderToken is PonderERC20 {
     }
 
     /// @notice Begin ownership transfer process
-    /// @param newOwner New owner address
     function transferOwnership(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert ZeroAddress();
         pendingOwner = newOwner;

@@ -15,18 +15,19 @@ contract PonderTokenTest is Test {
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     function setUp() public {
-        token = new PonderToken();
+        token = new PonderToken(owner,owner,owner);
     }
 
     function testInitialState() public {
         assertEq(token.name(), "Ponder");
         assertEq(token.symbol(), "PONDER");
         assertEq(token.decimals(), 18);
-        assertEq(token.totalSupply(), 0);
+        assertEq(token.totalSupply(), 450_000_000e18);
         assertEq(token.owner(), address(this));
         assertEq(token.minter(), address(0));
         assertEq(token.MAXIMUM_SUPPLY(), 1_000_000_000e18);
     }
+
 
     function testSetMinter() public {
         vm.expectEmit(true, true, false, false);
@@ -43,9 +44,10 @@ contract PonderTokenTest is Test {
     function testMinting() public {
         token.setMinter(address(this));
         token.mint(alice, 1000e18);
-        assertEq(token.totalSupply(), 1000e18);
+        assertEq(token.totalSupply(), 450_001_000e18);
         assertEq(token.balanceOf(alice), 1000e18);
     }
+
 
     function testFailMintOverMaxSupply() public {
         token.setMinter(address(this));
