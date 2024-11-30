@@ -3,7 +3,6 @@ pragma solidity ^0.8.19;
 
 /// @title IFiveFiveFiveLauncher
 /// @notice Interface for the 555 token launch platform
-/// @dev All function calls are currently implemented without side effects
 interface IFiveFiveFiveLauncher {
     /// @notice Emitted when a new launch is created
     event LaunchCreated(uint256 indexed launchId, address indexed token, address creator, string imageURI);
@@ -11,10 +10,6 @@ interface IFiveFiveFiveLauncher {
     event Contributed(uint256 indexed launchId, address indexed contributor, uint256 amount);
     /// @notice Emitted when a launch is finalized
     event LaunchFinalized(uint256 indexed launchId, uint256 lpAmount, uint256 creatorFee, uint256 protocolFee);
-    /// @notice Emitted when fee collector is updated
-    event FeeCollectorUpdated(address indexed newFeeCollector);
-    /// @notice Emitted when contributions are refunded
-    event ContributionRefunded(uint256 indexed launchId, address indexed contributor, uint256 amount);
     /// @notice Emitted when LP tokens are withdrawn
     event LPTokensWithdrawn(uint256 indexed launchId, address indexed creator, uint256 amount);
     /// @notice Emitted when transfers are enabled for a token
@@ -23,7 +18,14 @@ interface IFiveFiveFiveLauncher {
     event TokenMinted(uint256 indexed launchId, address indexed tokenAddress, uint256 amount);
     /// @notice Emitted when liquidity is added
     event LiquidityAdded(uint256 indexed launchId, uint256 ethAmount, uint256 tokenAmount);
-
+    /// @notice Emitted when a launch is completed
+    event LaunchCompleted(uint256 indexed launchId, uint256 totalRaised, uint256 totalSold);
+    /// @notice Emitted when protocol fee is paid
+    event ProtocolFeePaid(uint256 indexed launchId, uint256 amount);
+    /// @notice Emitted when creator fee is paid
+    event CreatorFeePaid(uint256 indexed launchId, address indexed creator, uint256 amount);
+    /// @notice Emitted when tokens are purchased
+    event TokenPurchased(uint256 indexed launchId, address indexed buyer, uint256 kubAmount, uint256 tokenAmount);
 
     /// @notice Creates a new token launch
     /// @param name Token name

@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "../core/PonderERC20.sol";
 import "../core/PonderFactory.sol";
-import "../periphery/PonderRouter.sol";
-import "./LaunchToken.sol";
+import "../interfaces/IPonderFactory.sol";
 import "../interfaces/IFiveFiveFiveLauncher.sol";
+import "../interfaces/ILaunchToken.sol";
+import "../periphery/PonderRouter.sol";
+import "./LaunchTokenFactory.sol";
 
 /// @title FiveFiveFiveLauncher
-/// @notice A fair launch protocol for token launches with initial liquidity
-/// @dev Implements IFiveFiveFiveLauncher interface
+/// @notice A token launch protocol optimized for efficient distribution and creator incentives on Bitkub Chain
+/// @dev Fair launch mechanism with 5555 KUB target raise
 contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
-    /// @notice Struct containing all information about a token launch
+    PonderRouter public immutable router;
+    IPonderFactory public immutable factory;
+    LaunchTokenFactory public immutable tokenFactory;
+
     struct LaunchInfo {
         address tokenAddress;
         string name;
@@ -24,55 +28,50 @@ contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
         bool launched;
         address creator;
         uint256 lpUnlockTime;
-        mapping(address => uint256) contributions;
+        uint256 tokenPrice;
+        uint256 tokensForSale;
+        uint256 tokensSold;
     }
 
-    /// @notice Fixed parameters for all launches
-    uint256 public constant MIN_TO_LAUNCH = 165 ether;    // 165 KUB (~$500)
-    uint256 public constant MIN_CONTRIBUTION = 0.55 ether; // 0.55 KUB
-    uint256 public constant TOTAL_SUPPLY = 555_555_555 ether; // 555.5M tokens
-    uint256 public constant CREATOR_FEE = 55;   // 0.55%
-    uint256 public constant PROTOCOL_FEE = 55;  // 0.55%
+    uint256 public constant TARGET_RAISE = 5555 ether;
+    uint256 public constant TOTAL_SUPPLY = 555_555_555 ether;
+    uint256 public constant CREATOR_FEE = 255;
+    uint256 public constant PROTOCOL_FEE = 55;
+    uint256 public constant LP_ALLOCATION = 10;
+    uint256 public constant CREATOR_ALLOCATION = 10;
+    uint256 public constant CONTRIBUTOR_ALLOCATION = 80;
     uint256 public constant FEE_DENOMINATOR = 10000;
     uint256 public constant LP_LOCK_PERIOD = 180 days;
 
-    /// @notice Core protocol addresses and state
-    PonderFactory public immutable factory;
-    PonderRouter public immutable router;
     address public owner;
     address public feeCollector;
 
-    /// @notice Launch tracking
     mapping(uint256 => LaunchInfo) public launches;
     uint256 public launchCount;
 
-    /// @notice Custom errors
     error LaunchNotFound();
     error AlreadyLaunched();
-    error BelowMinContribution();
+    error InvalidPayment();
+    error InvalidAmount();
     error ImageRequired();
     error InvalidTokenParams();
     error Unauthorized();
     error LPStillLocked();
+    error SoldOut();
 
-    /// @notice Authorization modifier
     modifier onlyOwner() {
         if (msg.sender != owner) revert Unauthorized();
         _;
     }
 
-    /// @notice Initializes the launcher with required dependencies
-    /// @param _factory The PonderFactory address
-    /// @param _router The PonderRouter address
-    /// @param _feeCollector The address that will receive protocol fees
-    constructor(address _factory, address payable _router, address _feeCollector) {
-        factory = PonderFactory(_factory);
+    constructor(IPonderFactory _factory, address payable _router, address _feeCollector) {
+        factory = _factory;
         router = PonderRouter(_router);
         feeCollector = _feeCollector;
         owner = msg.sender;
+        tokenFactory = new LaunchTokenFactory();
     }
 
-    /// @inheritdoc IFiveFiveFiveLauncher
     function createLaunch(
         string memory name,
         string memory symbol,
@@ -81,43 +80,51 @@ contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
         if(bytes(imageURI).length == 0) revert ImageRequired();
         _validateTokenParams(name, symbol);
 
-        LaunchToken token = new LaunchToken();
-        token.initialize(name, symbol, TOTAL_SUPPLY, address(this));
+        address tokenAddress = tokenFactory.deployToken();
+        ILaunchToken(tokenAddress).initialize(name, symbol, TOTAL_SUPPLY, address(this));
 
         launchId = launchCount++;
         LaunchInfo storage launch = launches[launchId];
-        launch.tokenAddress = address(token);
+        launch.tokenAddress = tokenAddress;
         launch.name = name;
         launch.symbol = symbol;
         launch.imageURI = imageURI;
-        launch.minToLaunch = MIN_TO_LAUNCH;
+        launch.minToLaunch = TARGET_RAISE;
         launch.creatorFee = CREATOR_FEE;
         launch.protocolFee = PROTOCOL_FEE;
         launch.creator = msg.sender;
+        launch.tokensForSale = (TOTAL_SUPPLY * CONTRIBUTOR_ALLOCATION) / 100;
+        launch.tokenPrice = (TARGET_RAISE * 1e18) / launch.tokensForSale;
 
-        emit LaunchCreated(launchId, address(token), msg.sender, imageURI);
-        emit TokenMinted(launchId, address(token), TOTAL_SUPPLY);
+        uint256 creatorTokens = (TOTAL_SUPPLY * CREATOR_ALLOCATION) / 100;
+        ILaunchToken(tokenAddress).setupVesting(launch.creator, creatorTokens);
+
+        emit LaunchCreated(launchId, tokenAddress, msg.sender, imageURI);
+        emit TokenMinted(launchId, tokenAddress, TOTAL_SUPPLY);
     }
 
-    /// @inheritdoc IFiveFiveFiveLauncher
     function contribute(uint256 launchId) external payable {
         LaunchInfo storage launch = launches[launchId];
         if(launch.tokenAddress == address(0)) revert LaunchNotFound();
         if(launch.launched) revert AlreadyLaunched();
-        if(msg.value < MIN_CONTRIBUTION) revert BelowMinContribution();
+        if(msg.value == 0) revert InvalidPayment();
 
-        launch.contributions[msg.sender] += msg.value;
+        uint256 tokensToReceive = (msg.value * 1e18) / launch.tokenPrice;
+
+        if(launch.tokensSold + tokensToReceive > launch.tokensForSale) revert SoldOut();
+
+        LaunchToken(launch.tokenAddress).transfer(msg.sender, tokensToReceive);
         launch.totalRaised += msg.value;
+        launch.tokensSold += tokensToReceive;
 
         emit Contributed(launchId, msg.sender, msg.value);
+        emit TokenPurchased(launchId, msg.sender, msg.value, tokensToReceive);
 
-        if (launch.totalRaised >= MIN_TO_LAUNCH) {
+        if (launch.totalRaised >= TARGET_RAISE) {
             _finalizeLaunch(launchId);
         }
     }
 
-    /// @notice Internal function to finalize launch and create LP
-    /// @param launchId ID of the launch to finalize
     function _finalizeLaunch(uint256 launchId) internal {
         LaunchInfo storage launch = launches[launchId];
         launch.launched = true;
@@ -126,18 +133,21 @@ contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
         uint256 protocolFeeAmount = (launch.totalRaised * launch.protocolFee) / FEE_DENOMINATOR;
         uint256 liquidityAmount = launch.totalRaised - creatorFeeAmount - protocolFeeAmount;
 
-        // Send fees
         payable(launch.creator).transfer(creatorFeeAmount);
         payable(feeCollector).transfer(protocolFeeAmount);
 
-        // Create LP
+        emit CreatorFeePaid(launchId, launch.creator, creatorFeeAmount);
+        emit ProtocolFeePaid(launchId, protocolFeeAmount);
+
         LaunchToken token = LaunchToken(launch.tokenAddress);
+        uint256 lpTokens = (TOTAL_SUPPLY * LP_ALLOCATION) / 100;
+
+        token.approve(address(router), lpTokens);
         token.enableTransfers();
-        token.approve(address(router), TOTAL_SUPPLY);
 
         router.addLiquidityETH{value: liquidityAmount}(
             launch.tokenAddress,
-            TOTAL_SUPPLY,
+            lpTokens,
             0,
             0,
             address(this),
@@ -148,10 +158,10 @@ contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
 
         emit TransfersEnabled(launchId, launch.tokenAddress);
         emit LaunchFinalized(launchId, liquidityAmount, creatorFeeAmount, protocolFeeAmount);
-        emit LiquidityAdded(launchId, liquidityAmount, TOTAL_SUPPLY);
+        emit LiquidityAdded(launchId, liquidityAmount, lpTokens);
+        emit LaunchCompleted(launchId, launch.totalRaised, launch.tokensSold);
     }
 
-    /// @inheritdoc IFiveFiveFiveLauncher
     function withdrawLP(uint256 launchId) external {
         LaunchInfo storage launch = launches[launchId];
         if(msg.sender != launch.creator) revert Unauthorized();
@@ -164,11 +174,7 @@ contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
         emit LPTokensWithdrawn(launchId, launch.creator, lpBalance);
     }
 
-    /// @inheritdoc IFiveFiveFiveLauncher
-    function getLaunchInfo(uint256 launchId)
-    external
-    view
-    returns (
+    function getLaunchInfo(uint256 launchId) external view returns (
         address tokenAddress,
         string memory name,
         string memory symbol,
@@ -176,8 +182,7 @@ contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
         uint256 totalRaised,
         bool launched,
         uint256 lpUnlockTime
-    )
-    {
+    ) {
         LaunchInfo storage launch = launches[launchId];
         return (
             launch.tokenAddress,
@@ -190,9 +195,25 @@ contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
         );
     }
 
-    /// @notice Validates token parameters
-    /// @param name Token name to validate
-    /// @param symbol Token symbol to validate
+    function getSaleInfo(uint256 launchId) external view returns (
+        uint256 tokenPrice,
+        uint256 tokensForSale,
+        uint256 tokensSold,
+        uint256 totalRaised,
+        bool launched,
+        uint256 remainingTokens
+    ) {
+        LaunchInfo storage launch = launches[launchId];
+        return (
+            launch.tokenPrice,
+            launch.tokensForSale,
+            launch.tokensSold,
+            launch.totalRaised,
+            launch.launched,
+            launch.tokensForSale - launch.tokensSold
+        );
+    }
+
     function _validateTokenParams(string memory name, string memory symbol) internal pure {
         bytes memory nameBytes = bytes(name);
         bytes memory symbolBytes = bytes(symbol);
