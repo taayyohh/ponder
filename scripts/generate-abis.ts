@@ -12,6 +12,7 @@ const contracts = [
     'PonderPair',
     'PonderRouter',
     'PonderToken',
+    'PonderPriceOracle',
     'PonderMasterChef',
     'KKUBUnwrapper',
     'FiveFiveFiveLauncher',
