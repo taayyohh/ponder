@@ -21,6 +21,7 @@ contract PonderMasterChefTest is Test {
     address alice = address(0x1);
     address bob = address(0x2);
     address treasury = address(0x3);
+    address launcher = address(0xbad);
 
     uint256 constant PONDER_PER_SECOND = 1e18;
     uint256 constant INITIAL_LP_SUPPLY = 1000e18;
@@ -37,7 +38,7 @@ contract PonderMasterChefTest is Test {
     function setUp() public {
         // Deploy core contracts
         ponder = new PonderToken(owner,owner,owner);
-        factory = new PonderFactory(address(this));
+        factory = new PonderFactory(address(this), address(1));
 
         // Deploy MasterChef with start time = now
         masterChef = new PonderMasterChef(

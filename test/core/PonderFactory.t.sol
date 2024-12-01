@@ -11,11 +11,13 @@ contract PonderFactoryTest is Test {
     ERC20Mint tokenB;
     ERC20Mint tokenC;
     address feeToSetter = address(0xfee);
+    address initialLauncher = address(0xbad);
 
     event PairCreated(address indexed token0, address indexed token1, address pair, uint256);
+    event LauncherUpdated(address indexed oldLauncher, address indexed newLauncher);
 
     function setUp() public {
-        factory = new PonderFactory(feeToSetter);
+        factory = new PonderFactory(feeToSetter, initialLauncher);
         tokenA = new ERC20Mint("Token A", "TKNA");
         tokenB = new ERC20Mint("Token B", "TKNB");
         tokenC = new ERC20Mint("Token C", "TKNC");
@@ -110,6 +112,24 @@ contract PonderFactoryTest is Test {
     function testFailSetMigratorUnauthorized() public {
         address newMigrator = address(0x1);
         factory.setMigrator(newMigrator);
+    }
+
+    function testSetLauncher() public {
+        address newLauncher = address(0x123);
+        vm.prank(feeToSetter);
+        vm.expectEmit(true, true, false, true);
+        emit LauncherUpdated(initialLauncher, newLauncher);
+        factory.setLauncher(newLauncher);
+        assertEq(factory.launcher(), newLauncher);
+    }
+
+    function testFailSetLauncherUnauthorized() public {
+        address newLauncher = address(0x123);
+        factory.setLauncher(newLauncher);
+    }
+
+    function testLauncherInitialization() public {
+        assertEq(factory.launcher(), initialLauncher, "Launcher not initialized correctly");
     }
 
     // Helper function to compute the expected pair address

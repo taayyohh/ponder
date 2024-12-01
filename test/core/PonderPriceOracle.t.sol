@@ -23,7 +23,7 @@ contract PonderPriceOracleTest is Test {
 
     function setUp() public {
         // Deploy core contracts
-        factory = new PonderFactory(address(this));
+        factory = new PonderFactory(address(this), address(1));
         oracle = new PonderPriceOracle(address(factory));
 
         // Rest of the setup remains the same...

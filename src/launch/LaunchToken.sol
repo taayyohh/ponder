@@ -152,9 +152,10 @@ contract LaunchToken is PonderERC20 {
             uint256 feeAmount = (amount * CREATOR_SWAP_FEE) / FEE_DENOMINATOR;
             uint256 netAmount = amount - feeAmount;
 
-            // First transfer fee to creator
+
+            // Transfer fee to creator
             _transfer(from, creator, feeAmount);
-            // Then transfer remaining amount to pair
+            // Transfer rest to pair
             _transfer(from, to, netAmount);
 
             emit CreatorFeePaid(creator, feeAmount);
@@ -162,7 +163,6 @@ contract LaunchToken is PonderERC20 {
             _transfer(from, to, amount);
         }
     }
-
     /**
      * @notice Calculate current claimable vested amount
      * @return amount Amount of tokens currently claimable

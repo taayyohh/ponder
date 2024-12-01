@@ -26,7 +26,7 @@ contract DeployBitkubScript is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        // Deploy with new constructor params
+        // Deploy token first
         PonderToken ponder = new PonderToken(
             treasury,
             teamReserve,
@@ -34,13 +34,15 @@ contract DeployBitkubScript is Script {
         );
         _verifyContract("PonderToken", address(ponder));
 
-        PonderFactory factory = new PonderFactory(deployer);
+        // Deploy factory with temporary launcher address
+        PonderFactory factory = new PonderFactory(deployer, address(1));
         _verifyContract("PonderFactory", address(factory));
 
-        // Deploy KKUBUnwrapper first
+        // Deploy KKUBUnwrapper
         KKUBUnwrapper kkubUnwrapper = new KKUBUnwrapper(KKUB);
         _verifyContract("KKUBUnwrapper", address(kkubUnwrapper));
 
+        // Deploy router
         PonderRouter router = new PonderRouter(
             address(factory),
             KKUB,
@@ -48,6 +50,7 @@ contract DeployBitkubScript is Script {
         );
         _verifyContract("PonderRouter", address(router));
 
+        // Deploy MasterChef
         PonderMasterChef masterChef = new PonderMasterChef(
             ponder,
             factory,
@@ -66,6 +69,9 @@ contract DeployBitkubScript is Script {
             treasury // Using same treasury address for fee collection
         );
         _verifyContract("FiveFiveFiveLauncher", address(launcher));
+
+        // Update factory with correct launcher address
+        factory.setLauncher(address(launcher));
 
         vm.stopBroadcast();
 

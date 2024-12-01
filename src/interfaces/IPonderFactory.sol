@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 interface IPonderFactory {
     event PairCreated(address indexed token0, address indexed token1, address pair, uint);
+    event LauncherUpdated(address indexed oldLauncher, address indexed newLauncher);
 
     function feeTo() external view returns (address);
     function feeToSetter() external view returns (address);
@@ -15,4 +16,7 @@ interface IPonderFactory {
     function setFeeTo(address) external;
     function setFeeToSetter(address) external;
     function setMigrator(address) external;
+
+    function launcher() external view returns (address);
+    function setLauncher(address) external;
 }

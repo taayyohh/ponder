@@ -5,6 +5,8 @@ import "./PonderERC20.sol";
 import "../interfaces/IPonderPair.sol";
 import "../interfaces/IPonderFactory.sol";
 import "../interfaces/IPonderCallee.sol";
+import "../interfaces/ILaunchToken.sol";
+
 import "../libraries/Math.sol";
 import "../libraries/UQ112x112.sol";
 
@@ -40,6 +42,10 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
 
     constructor() {
         factory = msg.sender;
+    }
+
+    function launcher() public view returns (address) {
+        return IPonderFactory(factory).launcher();
     }
 
     function initialize(address _token0, address _token1) external override {
@@ -119,7 +125,7 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
     function _mintFee(uint112 _reserve0, uint112 _reserve1) private returns (bool feeOn) {
         address feeTo = IPonderFactory(factory).feeTo();
         feeOn = feeTo != address(0);
-        uint256 _kLast = kLast; // gas savings
+        uint256 _kLast = kLast;
 
         if (feeOn) {
             if (_kLast != 0) {
@@ -133,17 +139,40 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
                     uint256 liquidity = numerator / denominator;
 
                     if (liquidity > 0) {
+                        // Check if either token0 is a LaunchToken
+                        try ILaunchToken(token0).launcher() returns (address launchToken0Launcher) {
+                            if (launchToken0Launcher == launcher()) {
+                                address tokenCreator = ILaunchToken(token0).creator();
+                                // Adjust protocol share to maintain 0.3% total fee
+                                // Creator gets 0.1% (1/3 of 0.3%)
+                                // Protocol gets 0.2% (2/3 of 0.3%)
+                                uint256 creatorShare = liquidity / 3;
+                                _mint(tokenCreator, creatorShare);
+                                _mint(feeTo, liquidity - creatorShare);
+                                return true;
+                            }
+                        } catch {}
+
+                        // Check if token1 is a LaunchToken if token0 wasn't
+                        try ILaunchToken(token1).launcher() returns (address launchToken1Launcher) {
+                            if (launchToken1Launcher == launcher()) {
+                                address tokenCreator = ILaunchToken(token1).creator();
+                                uint256 creatorShare = liquidity / 3;
+                                _mint(tokenCreator, creatorShare);
+                                _mint(feeTo, liquidity - creatorShare);
+                                return true;
+                            }
+                        } catch {}
+
+                        // For non-LaunchTokens, protocol gets full 0.3%
                         _mint(feeTo, liquidity);
                     }
                 }
             }
-
-            // Update kLast AFTER fee calculation
             kLast = uint256(_reserve0) * uint256(_reserve1);
         } else if (_kLast != 0) {
             kLast = 0;
         }
-
         return feeOn;
     }
 
