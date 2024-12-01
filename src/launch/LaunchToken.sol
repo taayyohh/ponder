@@ -16,9 +16,6 @@ contract LaunchToken is PonderERC20 {
     IPonderFactory public immutable factory;
     IPonderRouter public immutable router;
 
-    /// @notice Trading state
-    bool public transfersEnabled;
-
     /// @notice Creator vesting configuration
     address public creator;
     uint256 public vestingStart;
@@ -36,10 +33,8 @@ contract LaunchToken is PonderERC20 {
     event VestingInitialized(address indexed creator, uint256 amount, uint256 startTime, uint256 endTime);
     event TokensClaimed(address indexed creator, uint256 amount);
     event CreatorFeePaid(address indexed creator, uint256 amount);
-    event TransfersEnabled();
 
     /// @notice Custom errors
-    error TransfersDisabled();
     error Unauthorized();
     error InsufficientAllowance();
     error NoTokensAvailable();
@@ -67,6 +62,7 @@ contract LaunchToken is PonderERC20 {
         // Mint entire supply to launcher
         _mint(_launcher, TOTAL_SUPPLY);
     }
+
     /**
      * @notice Sets up vesting schedule for creator tokens
      * @param _creator Address of the creator
@@ -79,15 +75,6 @@ contract LaunchToken is PonderERC20 {
         vestingStart = block.timestamp;
         vestingEnd = block.timestamp + VESTING_DURATION;
         emit VestingInitialized(_creator, _amount, vestingStart, vestingEnd);
-    }
-
-    /**
-     * @notice Enables token transfers after launch completion
-     */
-    function enableTransfers() external {
-        if (msg.sender != launcher) revert Unauthorized();
-        transfersEnabled = true;
-        emit TransfersEnabled();
     }
 
     /**
@@ -113,7 +100,6 @@ contract LaunchToken is PonderERC20 {
      * @return success Transfer success
      */
     function transfer(address to, uint256 value) external override returns (bool) {
-        if (!transfersEnabled && msg.sender != launcher) revert TransfersDisabled();
         _transferWithFee(msg.sender, to, value);
         return true;
     }
@@ -126,8 +112,6 @@ contract LaunchToken is PonderERC20 {
      * @return success Transfer success
      */
     function transferFrom(address from, address to, uint256 value) external override returns (bool) {
-        if (!transfersEnabled && from != launcher) revert TransfersDisabled();
-
         uint256 currentAllowance = allowance(from, msg.sender);
         if (currentAllowance != type(uint256).max) {
             if (currentAllowance < value) revert InsufficientAllowance();
@@ -146,12 +130,11 @@ contract LaunchToken is PonderERC20 {
      */
     function _transferWithFee(address from, address to, uint256 amount) internal {
         address pair = factory.getPair(address(this), router.WETH());
-        bool isSwap = (from == pair || to == pair) && transfersEnabled;
+        bool isSwap = (from == pair || to == pair);
 
         if (isSwap && from != pair) {  // Only take fee when selling
             uint256 feeAmount = (amount * CREATOR_SWAP_FEE) / FEE_DENOMINATOR;
             uint256 netAmount = amount - feeAmount;
-
 
             // Transfer fee to creator
             _transfer(from, creator, feeAmount);
@@ -163,6 +146,7 @@ contract LaunchToken is PonderERC20 {
             _transfer(from, to, amount);
         }
     }
+
     /**
      * @notice Calculate current claimable vested amount
      * @return amount Amount of tokens currently claimable

@@ -199,7 +199,6 @@ contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
         uint256 lpTokens = (TOTAL_SUPPLY * LP_ALLOCATION) / 100;
 
         token.approve(address(router), lpTokens);
-        token.enableTransfers();
 
         router.addLiquidityETH{value: liquidityAmount}(
             launch.tokenAddress,
