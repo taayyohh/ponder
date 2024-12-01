@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "forge-std/Script.sol";
-import "../../src/core/PonderToken.sol";
 import "../../src/core/PonderFactory.sol";
-import "../../src/periphery/PonderRouter.sol";
-import "../../src/periphery/KKUBUnwrapper.sol";
 import "../../src/core/PonderMasterChef.sol";
+import "../../src/core/PonderPriceOracle.sol";
+import "../../src/core/PonderToken.sol";
 import "../../src/launch/FiveFiveFiveLauncher.sol";
+import "../../src/periphery/KKUBUnwrapper.sol";
+import "../../src/periphery/PonderRouter.sol";
+import "forge-std/Script.sol";
 
 contract DeployBitkubScript is Script {
     // Total farming allocation is 400M PONDER over 4 years
@@ -50,6 +51,10 @@ contract DeployBitkubScript is Script {
         );
         _verifyContract("PonderRouter", address(router));
 
+        // Deploy price oracle
+        PonderPriceOracle oracle = new PonderPriceOracle(address(factory));
+        _verifyContract("PonderPriceOracle", address(oracle));
+
         // Deploy MasterChef
         PonderMasterChef masterChef = new PonderMasterChef(
             ponder,
@@ -83,6 +88,7 @@ contract DeployBitkubScript is Script {
         console.log("Factory:", address(factory));
         console.log("KKUBUnwrapper:", address(kkubUnwrapper));
         console.log("Router:", address(router));
+        console.log("PriceOracle:", address(oracle));
         console.log("MasterChef:", address(masterChef));
         console.log("FiveFiveFiveLauncher:", address(launcher));
 
