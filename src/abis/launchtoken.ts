@@ -210,13 +210,6 @@ export const launchtokenAbi = [
   },
   {
     "type": "function",
-    "name": "enableTransfers",
-    "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "factory",
     "inputs": [],
     "outputs": [
@@ -474,19 +467,6 @@ export const launchtokenAbi = [
   },
   {
     "type": "function",
-    "name": "transfersEnabled",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "vestedClaimed",
     "inputs": [],
     "outputs": [
@@ -614,12 +594,6 @@ export const launchtokenAbi = [
   },
   {
     "type": "event",
-    "name": "TransfersEnabled",
-    "inputs": [],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "VestingInitialized",
     "inputs": [
       {
@@ -657,11 +631,6 @@ export const launchtokenAbi = [
   {
     "type": "error",
     "name": "NoTokensAvailable",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "TransfersDisabled",
     "inputs": []
   },
   {
