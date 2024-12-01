@@ -6,6 +6,11 @@ export const ponderfactoryAbi = [
         "name": "_feeToSetter",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "_launcher",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -131,6 +136,19 @@ export const ponderfactoryAbi = [
   },
   {
     "type": "function",
+    "name": "launcher",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "migrator",
     "inputs": [],
     "outputs": [
@@ -170,6 +188,19 @@ export const ponderfactoryAbi = [
   },
   {
     "type": "function",
+    "name": "setLauncher",
+    "inputs": [
+      {
+        "name": "_launcher",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setMigrator",
     "inputs": [
       {
@@ -180,6 +211,25 @@ export const ponderfactoryAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "LauncherUpdated",
+    "inputs": [
+      {
+        "name": "oldLauncher",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newLauncher",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
   },
   {
     "type": "event",

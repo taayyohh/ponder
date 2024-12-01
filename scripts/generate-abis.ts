@@ -13,7 +13,9 @@ const contracts = [
     'PonderRouter',
     'PonderToken',
     'PonderMasterChef',
-    'KKUBUnwrapper'
+    'KKUBUnwrapper',
+    'FiveFiveFiveLauncher',
+    'LaunchToken'
 ];
 
 // Ensure directories exist
