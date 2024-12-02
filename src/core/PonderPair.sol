@@ -204,16 +204,44 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
         if (amount0In == 0 && amount1In == 0) revert InsufficientInputAmount();
 
         { // scope for reserve{0,1}Adjusted, avoids stack too deep errors
-            // Verify k is maintained with fees included
-            uint256 balance0Adjusted = (balance0 * 1000) - (amount0In * 3);
-            uint256 balance1Adjusted = (balance1 * 1000) - (amount1In * 3);
+            uint256 balance0Adjusted;
+            uint256 balance1Adjusted;
+            bool isLaunchToken0;
+            bool isLaunchToken1;
+
+            // Check if either token is a LaunchToken from our launcher
+            try ILaunchToken(token0).launcher() returns (address launchLauncher0) {
+                isLaunchToken0 = (launchLauncher0 == launcher());
+            } catch {}
+            try ILaunchToken(token1).launcher() returns (address launchLauncher1) {
+                isLaunchToken1 = (launchLauncher1 == launcher());
+            } catch {}
+
+            // If token being sold is a LaunchToken, split fee between LP (0.2%) and creator (0.1%)
+            if ((amount0In > 0 && isLaunchToken0) || (amount1In > 0 && isLaunchToken1)) {
+                if (amount0In > 0) {
+                    address tokenCreator = ILaunchToken(token0).creator();
+                    balance0Adjusted = (balance0 * 1000) - (amount0In * 2); // 0.2% LP fee
+                    _safeTransfer(token0, tokenCreator, (amount0In * 1) / 1000); // 0.1% creator fee
+                    balance1Adjusted = (balance1 * 1000); // No fee on output token
+                } else {
+                    address tokenCreator = ILaunchToken(token1).creator();
+                    balance1Adjusted = (balance1 * 1000) - (amount1In * 2); // 0.2% LP fee
+                    _safeTransfer(token1, tokenCreator, (amount1In * 1) / 1000); // 0.1% creator fee
+                    balance0Adjusted = (balance0 * 1000); // No fee on output token
+                }
+            } else {
+                // Regular 0.3% LP fee for non-LaunchTokens
+                balance0Adjusted = (balance0 * 1000) - (amount0In * 3);
+                balance1Adjusted = (balance1 * 1000) - (amount1In * 3);
+            }
+
             if (balance0Adjusted * balance1Adjusted < uint256(_reserve0) * uint256(_reserve1) * 1000000) {
                 revert InsufficientInputAmount();
             }
         }
 
         _update(balance0, balance1, _reserve0, _reserve1);
-
 
         emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }

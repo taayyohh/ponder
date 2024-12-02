@@ -129,22 +129,9 @@ contract LaunchToken is PonderERC20 {
      * @param amount Amount to transfer
      */
     function _transferWithFee(address from, address to, uint256 amount) internal {
-        address pair = factory.getPair(address(this), router.WETH());
-        bool isSwap = (from == pair || to == pair);
-
-        if (isSwap && from != pair) {  // Only take fee when selling
-            uint256 feeAmount = (amount * CREATOR_SWAP_FEE) / FEE_DENOMINATOR;
-            uint256 netAmount = amount - feeAmount;
-
-            // Transfer fee to creator
-            _transfer(from, creator, feeAmount);
-            // Transfer rest to pair
-            _transfer(from, to, netAmount);
-
-            emit CreatorFeePaid(creator, feeAmount);
-        } else {
-            _transfer(from, to, amount);
-        }
+        // No additional fee taken, just do the transfer
+        // The pair contract will handle the 0.3% fee split (0.2% LP, 0.1% creator)
+        _transfer(from, to, amount);
     }
 
     /**

@@ -18,7 +18,7 @@ contract PonderFactory is IPonderFactory {
     error PairExists();
     error Forbidden();
 
-    bytes32 public constant INIT_CODE_PAIR_HASH = 0x83f87092421391b0f9e94476ad66002a94509b44bbf22d6bd5ff739079037b74;
+    bytes32 public constant INIT_CODE_PAIR_HASH = 0x9a82a765b06911e379e72a0467b97d0657af167aeed3ae61444d80bc20437055;
 
     constructor(address _feeToSetter, address _launcher) {
         feeToSetter = _feeToSetter;

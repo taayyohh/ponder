@@ -214,7 +214,6 @@ contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
         // Emit events
         emit CreatorFeePaid(launchId, launch.creator, creatorFeeAmount);
         emit ProtocolFeePaid(launchId, protocolFeeAmount);
-        emit TransfersEnabled(launchId, launch.tokenAddress);
         emit LaunchFinalized(launchId, liquidityAmount, creatorFeeAmount, protocolFeeAmount);
         emit LiquidityAdded(launchId, liquidityAmount, lpTokens);
         emit LaunchCompleted(launchId, launch.totalRaised, launch.tokensSold);
