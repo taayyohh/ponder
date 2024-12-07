@@ -774,7 +774,7 @@ export const fivefivefivelauncherAbi = [
         "internalType": "address"
       },
       {
-        "name": "kubAmount",
+        "name": "ponderAmount",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
