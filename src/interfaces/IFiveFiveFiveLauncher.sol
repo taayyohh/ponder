@@ -29,7 +29,7 @@ interface IFiveFiveFiveLauncher {
     /// @notice Emitted when creator fee is paid
     event CreatorFeePaid(uint256 indexed launchId, address indexed creator, uint256 amount);
     /// @notice Emitted when tokens are purchased
-    event TokenPurchased(uint256 indexed launchId, address indexed buyer, uint256 kubAmount, uint256 tokenAmount);
+    event TokenPurchased(uint256 indexed launchId, address indexed buyer, uint256 ponderAmount, uint256 tokenAmount);
 
     /// @notice Creates a new token launch
     /// @param name Token name
