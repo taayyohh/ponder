@@ -26,13 +26,18 @@ export const launchtokenAbi = [
         "name": "_router",
         "type": "address",
         "internalType": "address payable"
+      },
+      {
+        "name": "_ponder",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
   },
   {
     "type": "function",
-    "name": "CREATOR_SWAP_FEE",
+    "name": "CREATOR_FEE",
     "inputs": [],
     "outputs": [
       {
@@ -78,6 +83,19 @@ export const launchtokenAbi = [
         "name": "",
         "type": "bytes32",
         "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PROTOCOL_FEE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -207,6 +225,13 @@ export const launchtokenAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "enableTransfers",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -344,6 +369,19 @@ export const launchtokenAbi = [
   },
   {
     "type": "function",
+    "name": "ponder",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract PonderToken"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "router",
     "inputs": [],
     "outputs": [
@@ -467,6 +505,19 @@ export const launchtokenAbi = [
   },
   {
     "type": "function",
+    "name": "transfersEnabled",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "vestedClaimed",
     "inputs": [],
     "outputs": [
@@ -550,6 +601,19 @@ export const launchtokenAbi = [
   },
   {
     "type": "event",
+    "name": "ProtocolFeePaid",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "TokensClaimed",
     "inputs": [
       {
@@ -594,6 +658,12 @@ export const launchtokenAbi = [
   },
   {
     "type": "event",
+    "name": "TransfersEnabled",
+    "inputs": [],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "VestingInitialized",
     "inputs": [
       {
@@ -630,7 +700,17 @@ export const launchtokenAbi = [
   },
   {
     "type": "error",
+    "name": "InvalidFeeConfiguration",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NoTokensAvailable",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TransfersDisabled",
     "inputs": []
   },
   {

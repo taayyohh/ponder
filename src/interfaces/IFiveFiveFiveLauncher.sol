@@ -8,6 +8,10 @@ interface IFiveFiveFiveLauncher {
     event LaunchCreated(uint256 indexed launchId, address indexed token, address creator, string imageURI);
     /// @notice Emitted when a contribution is made
     event Contributed(uint256 indexed launchId, address indexed contributor, uint256 amount);
+    /// @notice Emitted when a contribution is made
+    event PonderBurned(uint256 indexed launchId, uint256 burnAmount);
+    /// @notice Emitted when a contribution is made
+    event PonderContributed(uint256 indexed launchId, address indexed contributor, uint256 amount);
     /// @notice Emitted when a launch is finalized
     event LaunchFinalized(uint256 indexed launchId, uint256 lpAmount, uint256 creatorFee, uint256 protocolFee);
     /// @notice Emitted when LP tokens are withdrawn
@@ -38,9 +42,9 @@ interface IFiveFiveFiveLauncher {
         string memory imageURI
     ) external returns (uint256 launchId);
 
-    /// @notice Allows users to contribute ETH to a launch
+    /// @notice Allows users to contribute PONDER to a launch
     /// @param launchId The ID of the launch to contribute to
-    function contribute(uint256 launchId) external payable;
+    function contribute(uint256 launchId) external;
 
     /// @notice Allows creator to withdraw LP tokens after lock period
     /// @param launchId The ID of the launch to withdraw from

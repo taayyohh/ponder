@@ -14,9 +14,39 @@ contract DeployBitkubScript is Script {
     // Total farming allocation is 400M PONDER over 4 years
     // This equals approximately 3.168 PONDER per second (400M / (4 * 365 * 24 * 60 * 60))
     uint256 constant PONDER_PER_SECOND = 3168000000000000000; // 3.168 ether
+
     address constant KKUB = 0x1de8A5c87d421f53eE4ae398cc766e62E88e9518;
     // testnet - 0x1de8A5c87d421f53eE4ae398cc766e62E88e9518
-    // mainner - 0x67eBD850304c70d983B2d1b93ea79c7CD6c3F6b5
+    // mainnet - 0x67eBD850304c70d983B2d1b93ea79c7CD6c3F6b5
+
+    error InvalidAddress();
+    error PairCreationFailed();
+    error DeploymentFailed(string name);
+
+    struct DeploymentAddresses {
+        address ponder;
+        address factory;
+        address kkubUnwrapper;
+        address router;
+        address oracle;
+        address ponderKubPair;
+        address masterChef;
+        address launcher;
+    }
+
+    function validateAddresses(
+        address treasury,
+        address teamReserve,
+        address marketing,
+        address deployer
+    ) internal pure {
+        if (treasury == address(0) ||
+        teamReserve == address(0) ||
+        marketing == address(0) ||
+            deployer == address(0)) {
+            revert InvalidAddress();
+        }
+    }
 
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
@@ -25,25 +55,40 @@ contract DeployBitkubScript is Script {
         address marketing = vm.envAddress("MARKETING_ADDRESS");
         address deployer = vm.addr(deployerPrivateKey);
 
+        // Validate addresses
+        validateAddresses(treasury, teamReserve, marketing, deployer);
+
         vm.startBroadcast(deployerPrivateKey);
 
-        // Deploy token first
-        PonderToken ponder = new PonderToken(
+        DeploymentAddresses memory addresses = deployContracts(
+            deployer,
             treasury,
             teamReserve,
             marketing
         );
-        _verifyContract("PonderToken", address(ponder));
 
-        // Deploy factory with temporary launcher address
-        PonderFactory factory = new PonderFactory(deployer, address(1));
+        // Final configuration
+        PonderToken(addresses.ponder).setMinter(addresses.masterChef);
+        PonderFactory(addresses.factory).setLauncher(addresses.launcher);
+
+        vm.stopBroadcast();
+
+        logDeployment(addresses, treasury);
+    }
+
+    function deployContracts(
+        address deployer,
+        address treasury,
+        address teamReserve,
+        address marketing
+    ) internal returns (DeploymentAddresses memory addresses) {
+        // 1. Deploy core factory and periphery
+        PonderFactory factory = new PonderFactory(deployer, address(0));
         _verifyContract("PonderFactory", address(factory));
 
-        // Deploy KKUBUnwrapper
         KKUBUnwrapper kkubUnwrapper = new KKUBUnwrapper(KKUB);
         _verifyContract("KKUBUnwrapper", address(kkubUnwrapper));
 
-        // Deploy router
         PonderRouter router = new PonderRouter(
             address(factory),
             KKUB,
@@ -51,11 +96,48 @@ contract DeployBitkubScript is Script {
         );
         _verifyContract("PonderRouter", address(router));
 
-        // Deploy price oracle
-        PonderPriceOracle oracle = new PonderPriceOracle(address(factory));
+        // 2. Deploy launcher first (without PONDER and oracle)
+        FiveFiveFiveLauncher tempLauncher = new FiveFiveFiveLauncher(
+            address(factory),
+            payable(address(router)),
+            treasury,
+            address(0),
+            address(0)
+        );
+        _verifyContract("Initial Launcher", address(tempLauncher));
+
+        // 3. Deploy PONDER with launcher address
+        PonderToken ponder = new PonderToken(
+            treasury,
+            teamReserve,
+            marketing,
+            address(tempLauncher)
+        );
+        _verifyContract("PonderToken", address(ponder));
+
+        // 4. Create PONDER/KKUB pair
+        factory.createPair(address(ponder), KKUB);
+        address ponderKubPair = factory.getPair(address(ponder), KKUB);
+        if (ponderKubPair == address(0)) revert PairCreationFailed();
+
+        // 5. Deploy oracle
+        PonderPriceOracle oracle = new PonderPriceOracle(
+            address(factory),
+            ponderKubPair
+        );
         _verifyContract("PonderPriceOracle", address(oracle));
 
-        // Deploy MasterChef
+        // 6. Deploy final launcher with PONDER and oracle
+        FiveFiveFiveLauncher launcher = new FiveFiveFiveLauncher(
+            address(factory),
+            payable(address(router)),
+            treasury,
+            address(ponder),
+            address(oracle)
+        );
+        _verifyContract("Final Launcher", address(launcher));
+
+        // 7. Deploy MasterChef
         PonderMasterChef masterChef = new PonderMasterChef(
             ponder,
             factory,
@@ -65,49 +147,16 @@ contract DeployBitkubScript is Script {
         );
         _verifyContract("MasterChef", address(masterChef));
 
-        ponder.setMinter(address(masterChef));
-
-        // Deploy FiveFiveFiveLauncher
-        FiveFiveFiveLauncher launcher = new FiveFiveFiveLauncher(
-            address(factory),
-            payable(address(router)),
-            treasury // Using same treasury address for fee collection
-        );
-        _verifyContract("FiveFiveFiveLauncher", address(launcher));
-
-        // Update factory with correct launcher address
-        factory.setLauncher(address(launcher));
-
-        vm.stopBroadcast();
-
-        console.log("\nDeployment Summary on Bitkub Chain:");
-        console.log("--------------------------------");
-        console.log("Deployer Address:", deployer);
-        console.log("KKUB Address:", KKUB);
-        console.log("PonderToken:", address(ponder));
-        console.log("Factory:", address(factory));
-        console.log("KKUBUnwrapper:", address(kkubUnwrapper));
-        console.log("Router:", address(router));
-        console.log("PriceOracle:", address(oracle));
-        console.log("MasterChef:", address(masterChef));
-        console.log("FiveFiveFiveLauncher:", address(launcher));
-
-        // Additional deployment verification information
-        console.log("\nVerification Info:");
-        console.log("--------------------------------");
-        console.log("Treasury/Fee Collector:", treasury);
-        console.log("PONDER per second:", PONDER_PER_SECOND);
-        console.log("Min to Launch:", 165 ether, "KUB");
-        console.log("Min Contribution:", 0.55 ether, "KUB");
-        console.log("LP Lock Period:", 180 days, "seconds");
-
-        console.log("\nToken Allocation Summary:");
-        console.log("--------------------------------");
-        console.log("Initial Liquidity (10%):", uint256(100_000_000 * 1e18));
-        console.log("Liquidity Mining (40%):", uint256(400_000_000 * 1e18));
-        console.log("Team/Reserve (15%):", uint256(150_000_000 * 1e18));
-        console.log("Marketing/Community (10%):", uint256(100_000_000 * 1e18));
-        console.log("Treasury/DAO (25%):", uint256(250_000_000 * 1e18));
+        return DeploymentAddresses({
+            ponder: address(ponder),
+            factory: address(factory),
+            kkubUnwrapper: address(kkubUnwrapper),
+            router: address(router),
+            oracle: address(oracle),
+            ponderKubPair: ponderKubPair,
+            masterChef: address(masterChef),
+            launcher: address(launcher)
+        });
     }
 
     function _verifyContract(string memory name, address contractAddress) internal view {
@@ -115,7 +164,31 @@ contract DeployBitkubScript is Script {
         assembly {
             size := extcodesize(contractAddress)
         }
-        require(size > 0, string(abi.encodePacked(name, " deployment failed")));
+        if (size == 0) revert DeploymentFailed(name);
         console.log(name, "deployed at:", contractAddress);
     }
+
+    function logDeployment(DeploymentAddresses memory addresses, address treasury) internal pure {
+        console.log("\nDeployment Summary on Bitkub Chain:");
+        console.log("--------------------------------");
+        console.log("KKUB Address:", KKUB);
+        console.log("PonderToken:", addresses.ponder);
+        console.log("Factory:", addresses.factory);
+        console.log("KKUBUnwrapper:", addresses.kkubUnwrapper);
+        console.log("Router:", addresses.router);
+        console.log("PriceOracle:", addresses.oracle);
+        console.log("PONDER/KKUB Pair:", addresses.ponderKubPair);
+        console.log("MasterChef:", addresses.masterChef);
+        console.log("FiveFiveFiveLauncher:", addresses.launcher);
+        console.log("Treasury:", treasury);
+
+        console.log("\nToken Allocation Summary:");
+        console.log("--------------------------------");
+        console.log("Liquidity Mining (40%):", uint256(400_000_000 * 1e18));
+        console.log("Team/Reserve (15%):", uint256(150_000_000 * 1e18));
+        console.log("Marketing/Community (10%):", uint256(100_000_000 * 1e18));
+        console.log("Treasury/DAO (25%):", uint256(250_000_000 * 1e18));
+    }
+
+    receive() external payable {}
 }

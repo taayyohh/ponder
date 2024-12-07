@@ -10,108 +10,191 @@
         ╰───────────────────────╯       
             ╰───────────────╯           
                 ╰────────╯                
-
 ```
 
-Ponder is a decentralized exchange protocol built specifically for Bitkub Chain. Building on Uniswap V2's proven foundation, Ponder introduces yield farming through the PONDER token while maintaining the core AMM functionality that powers decentralized trading.
+Ponder is a decentralized exchange protocol built specifically for Bitkub Chain, featuring an innovative meme token launch platform. The protocol combines Uniswap V2's proven AMM foundation with yield farming through the PONDER token and a unique fair launch mechanism.
 
-The protocol uses automated market making (AMM) to enable permissionless trading. Liquidity providers deposit pairs of tokens into pools to create trading markets. Every pool employs the constant product formula (x * y = k) to determine exchange rates, with a 0.3% fee on trades that rewards liquidity providers. The protocol's price oracle system accumulates time-weighted prices, providing TWAP (Time-Weighted Average Price) data feeds that other protocols can reliably use.
+## Core Protocol Components
 
-## PONDER Token
+### 1. Automated Market Maker (AMM)
+- Constant product formula (x * y = k)
+- 0.3% trading fee structure
+- Time-weighted price oracle system
+- Permissionless liquidity provision
 
-The PONDER token ($PONDER) drives the protocol's economic incentives with the following specifications:
+## 555 Fun Mechanics
 
-* Maximum supply cap: 1,000,000,000 (1 billion) tokens
-* Distribution timeline: 4 years for farming allocation, after which minting is permanently disabled
-* Initial Distribution:
-    - Treasury/DAO: 25% (250M)
-    - Team/Reserve: 15% (150M, vested over 1 year)
-    - Initial Liquidity: 10% (100M)
-    - Marketing: 10% (100M)
-    - Farming allocation: 40% (400M, distributed over 4 years)
-* Vesting:
-    - Team allocation vests linearly over 365 days
-    - Farm rewards are distributed per second over 4 years
-* Minting control: Restricted to MasterChef contract for farming portion only
-* Ownership model: Two-step ownership transfer with pending owner mechanism
-* Future utility: Protocol governance (planned)
+The 555 Launch platform introduces a novel token launch mechanism designed to create sustainable meme token ecosystems.
 
+### Launch Creation Process
+1. Creator initiates launch with:
+  - Token name and symbol
+  - Token metadata (IPFS URI)
+  - Initial token supply: 555,555,555 tokens
 
-## Yield Farming System
+2. Token Allocation:
+  - 80% (444,444,444 tokens) - Public sale contributors
+  - 10% (55,555,555 tokens) - Creator vesting
+  - 10% (55,555,555 tokens) - Initial liquidity
 
-The farming system, powered by MasterChef, introduces several sophisticated mechanics:
+### Launch Contribution Phase
+1. Target Raise:
+  - Fixed at 5,555 KUB value
+  - Price determined via PONDER/KUB oracle
+  - Contributors provide PONDER tokens
 
-Base Farming:
-  
-LP token staking earns PONDER rewards
-Rewards calculated per second based on pool allocations
-Multiple pools with customizable reward weights
+2. PONDER Distribution:
+  - 50% to launch token/PONDER LP
+  - 30% to PONDER/KUB LP
+  - 20% burned permanently
 
-Reward Boosting:
-  
-Users can stake PONDER to enhance farming yields
-Boost multipliers scale up to 3x base rate
-Boost calculation based on PONDER stake amount
-Independent boosts per pool
+### Automatic Market Making
+1. Initial Liquidity Pool Creation:
+  - Launch token/PONDER pool established
+  - Additional PONDER/KUB liquidity
+  - LP tokens locked for 180 days
 
-Pool Management:
-  
-Configurable allocation points per pool
-Deposit fees (up to 10%) support protocol treasury
-Real-time reward rate adjustments
-Emergency withdrawal functionality
+2. Trading Fee Structure:
+  - 0.3% total fee on trades
+  - 0.2% to LP providers
+  - 0.1% to token creator
 
-Reward Distribution:
-  
-Automatic reward compounding
-Safe reward transfer handling
-Mass pool updates for efficiency
+## Tokenomics
 
-## Getting Started
+### PONDER Token Utility
+1. Launch Platform:
+  - Required for participating in launches
+  - Automatically pairs with new tokens
+  - Burns create deflationary pressure
 
+2. Liquidity Mining:
+  - Farm PONDER by providing liquidity
+  - Boost rewards by staking PONDER
+  - Pool-specific multipliers up to 3x
 
-Copy
-# Install
-git clone https://github.com/yourusername/ponder-protocol.git
-cd ponder-protocol
-forge install
+3. Protocol Fees:
+  - Creator fees in PONDER
+  - LP rewards in trading pairs
+  - Treasury accumulation
 
-# Build
-forge build
+### Token Distribution
+**Total Supply: 1,000,000,000 PONDER**
 
-# Test
-forge test
-## Contract Interactions
+Initial Distribution (60%):
+- 25% (250M) - Treasury/DAO
+  - Protocol development
+  - Ecosystem growth
+  - Community initiatives
 
-For users looking to interact with the protocol:
+- 15% (150M) - Team/Reserve
+  - 1-year linear vesting
+  - Strategic partnerships
+  - Long-term development
 
-Providing Liquidity:
- 
-Approve tokens to Router contract
-Call addLiquidity() with desired amounts
-Receive LP tokens representing pool share
+- 10% (100M) - Initial Liquidity
+  - DEX trading pairs
+  - Market stability
 
-Trading:
- 
-Approve tokens to Router contract
-Use swap functions with specified paths
-Set reasonable slippage tolerance
+- 10% (100M) - Marketing
+  - Community growth
+  - User acquisition
+  - Brand development
 
-Farming:
- 
-Stake LP tokens in MasterChef
-Optionally stake PONDER for boosted rewards
-Harvest rewards anytime
-Compound or withdraw as needed
+Farming Distribution (40%):
+- 400M tokens over 4 years
+- Per-second emission rate
+- Adjustable pool weights
+- Boost multipliers up to 3x
 
-Using Price Feed:
- 
-Query pairs for current reserves
-Access TWAP data through oracle views
-Customize time windows for price accuracy
+### Deflationary Mechanics
+
+1. Launch Platform Burns:
+  - 20% of contributed PONDER
+  - Permanent supply reduction
+  - Increased scarcity over time
+
+2. Trading Fee Burns:
+  - Portion of protocol fees
+  - Regular buyback and burn
+  - Market-driven burn rate
+
+### Value Accrual Mechanisms
+
+1. Launch Platform:
+  - PONDER required for launches
+  - LP pair creation
+  - Fee distribution to holders
+
+2. Farming System:
+  - Liquidity incentivization
+  - Long-term staking rewards
+  - Boost mechanism lock-up
+
+3. Protocol Growth:
+  - Treasury accumulation
+  - DAO governance (planned)
+  - Ecosystem expansion
+
+## System Architecture
+
+### Core Contracts
+1. PonderFactory:
+  - Pair creation
+  - Fee management
+  - Protocol control
+
+2. PonderRouter:
+  - Trading functions
+  - Liquidity management
+  - Path optimization
+
+3. FiveFiveFiveLauncher:
+  - Launch creation
+  - PONDER collection
+  - LP generation
+  - Fee distribution
+
+4. PonderToken:
+  - Supply management
+  - Vesting control
+  - Burn mechanics
+
+### Integration Guide
+
+Launch Platform Integration:
+```solidity
+// Create a new token launch
+uint256 launchId = launcher.createLaunch(
+    "Token Name",
+    "SYMBOL",
+    "ipfs://metadata"
+);
+
+// Contribute to launch
+launcher.contribute(launchId);
+
+// Claim vested tokens (creator)
+launchToken.claimVestedTokens();
+
+// Withdraw LP tokens (after lock period)
+launcher.withdrawLP(launchId);
+```
+
+Farming Integration:
+```solidity
+// Stake LP tokens
+masterChef.deposit(pid, amount);
+
+// Stake PONDER for boost
+masterChef.boostStake(pid, amount);
+
+// Harvest rewards
+masterChef.deposit(pid, 0);
+
+// Withdraw LP tokens
+masterChef.withdraw(pid, amount);
+```
 
 ## License
 
 MIT License - see [LICENSE](LICENSE)
-
-While the protocol builds on proven mechanics, users should conduct their own review before participation.

@@ -17,7 +17,7 @@ contract PonderTokenTest is Test {
     event TeamTokensClaimed(uint256 amount);
 
     function setUp() public {
-        token = new PonderToken(treasury, teamReserve, marketing);
+        token = new PonderToken(treasury, teamReserve, marketing, address(this));
     }
 
     function testInitialState() public {

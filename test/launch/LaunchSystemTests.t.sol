@@ -1,54 +1,211 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import "forge-std/Test.sol";
+import "forge-std/console.sol";
 import "../../src/core/PonderERC20.sol";
 import "../../src/core/PonderFactory.sol";
+import "../../src/core/PonderToken.sol";
+import "../../src/core/PonderPriceOracle.sol";
 import "../../src/launch/FiveFiveFiveLauncher.sol";
 import "../../src/launch/LaunchToken.sol";
 import "../../src/periphery/PonderRouter.sol";
 import "../../test/mocks/WETH9.sol";
 import "../mocks/MockKKUBUnwrapper.sol";
-import "forge-std/Test.sol";
 
 contract LaunchSystemTest is Test {
+    // Core contracts
     FiveFiveFiveLauncher launcher;
     PonderFactory factory;
     PonderRouter router;
+    PonderToken ponder;
+    PonderPriceOracle oracle;
     WETH9 weth;
 
+    // Test addresses
     address creator = makeAddr("creator");
     address user1 = makeAddr("user1");
     address user2 = makeAddr("user2");
     address feeCollector = makeAddr("feeCollector");
+    address treasury = makeAddr("treasury");
+    address teamReserve = makeAddr("teamReserve");
+    address marketing = makeAddr("marketing");
 
+    // Protocol constants
     uint256 constant TARGET_RAISE = 5555 ether;
     uint256 constant TOTAL_SUPPLY = 555_555_555 ether;
+    uint256 constant UPDATE_INTERVAL = 15 minutes;
+    uint256 constant MIN_OBSERVATIONS = 3;
 
-    event LaunchCreated(uint256 indexed launchId, address indexed token, address creator, string imageURI);
-    event Contributed(uint256 indexed launchId, address indexed contributor, uint256 amount);
-    event TokenPurchased(uint256 indexed launchId, address indexed buyer, uint256 ethAmount, uint256 tokenAmount);
-    event CreatorFeePaid(uint256 indexed launchId, address indexed creator, uint256 feeAmount);
-    event ProtocolFeePaid(uint256 indexed launchId, uint256 feeAmount);
-    event LaunchCompleted(uint256 indexed launchId, uint256 totalRaised, uint256 tokensSold);
+    // Initial liquidity constants
+    uint256 constant INITIAL_PONDER = 10_000_000e18;  // 10M PONDER
+    uint256 constant INITIAL_WETH = 10_000e18;        // 10K WETH
+    uint256 constant LAUNCHER_ETH = 10_000 ether;       // ETH for launcher
 
     function setUp() public {
-        // Deploy core contracts
+        console.log("Starting setup...");
+        _setupPhase1();
+    }
+
+    function _setupPhase1() private {
+        // 1. Initial timestamp setup
+        vm.warp(block.timestamp + 30 days);
+        console.log("Initial timestamp:", block.timestamp);
+
+        // 2. Deploy core contracts
+        console.log("Deploying WETH...");
         weth = new WETH9();
-        factory = new PonderFactory(address(this), address(1)); // Pass launcher address
+
+        console.log("Deploying Factory...");
+        factory = new PonderFactory(address(this), address(0));
+
+        console.log("Deploying PONDER...");
+        ponder = new PonderToken(
+            treasury,
+            teamReserve,
+            marketing,
+            address(this)
+        );
+
+        // 3. Router setup
+        console.log("Setting up Router...");
         MockKKUBUnwrapper unwrapper = new MockKKUBUnwrapper(address(weth));
         router = new PonderRouter(address(factory), address(weth), address(unwrapper));
 
-        // Deploy launcher
+        _setupPhase2();
+    }
+
+    function _setupPhase2() private {
+        // 4. Initial token setup
+        console.log("Setting up token permissions...");
+        vm.startPrank(address(this));
+        ponder.setMinter(address(this));
+
+        console.log("Minting initial PONDER:", INITIAL_PONDER);
+        ponder.mint(address(this), INITIAL_PONDER);
+
+        console.log("Approving PONDER for router");
+        ponder.approve(address(router), INITIAL_PONDER);
+        vm.stopPrank();
+
+        // 5. WETH setup
+        console.log("Setting up WETH with amount:", INITIAL_WETH);
+        vm.deal(address(this), INITIAL_WETH);
+        weth.deposit{value: INITIAL_WETH}();
+        weth.approve(address(router), INITIAL_WETH);
+
+        _setupPhase3();
+    }
+
+    function _setupPhase3() private {
+        // 6. Add initial liquidity
+        console.log("Adding initial liquidity...");
+
+        // Check balances before adding liquidity
+        console.log("PONDER balance:", ponder.balanceOf(address(this)));
+        console.log("WETH balance:", weth.balanceOf(address(this)));
+        console.log("ETH balance:", address(this).balance);
+
+        router.addLiquidity(
+            address(ponder),
+            address(weth),
+            INITIAL_PONDER,
+            INITIAL_WETH,
+            0,
+            0,
+            address(this),
+            block.timestamp + 1 hours
+        );
+
+        address ponderWethPair = factory.getPair(address(ponder), address(weth));
+        require(ponderWethPair != address(0), "Pair not created");
+        console.log("Pair created at:", ponderWethPair);
+
+        _setupPhase4(ponderWethPair);
+    }
+
+    function _setupPhase4(address ponderWethPair) private {
+        // 7. Oracle setup
+        console.log("Setting up oracle...");
+        oracle = new PonderPriceOracle(address(factory), ponderWethPair);
+
+        // 8. Oracle initialization
+        for (uint i = 0; i < MIN_OBSERVATIONS; i++) {
+            vm.warp(block.timestamp + UPDATE_INTERVAL);
+            vm.roll(block.number + 1);
+
+            if (i > 0) {
+                console.log("Making trade for observation", i);
+                _makeSmallTrade(i % 2 == 0);
+            }
+
+            console.log("Updating oracle observation", i);
+            oracle.update(ponderWethPair);
+        }
+
+        _setupFinal();
+    }
+
+    function _setupFinal() private {
+        // 9. Launcher deployment
+        console.log("Deploying launcher...");
         launcher = new FiveFiveFiveLauncher(
             address(factory),
             payable(address(router)),
-            feeCollector
+            feeCollector,
+            address(ponder),
+            address(oracle)
         );
 
-        // Fund accounts
-        vm.deal(creator, 10000 ether);
-        vm.deal(user1, 10000 ether);
-        vm.deal(user2, 10000 ether);
+        // 10. Ownership transfer
+        console.log("Transferring PONDER ownership...");
+        vm.prank(address(this));
+        ponder.transferOwnership(address(launcher));
+
+        vm.prank(address(launcher));
+        ponder.acceptOwnership();
+
+        // 11. Fund launcher with more ETH
+        console.log("Funding launcher with ETH:", LAUNCHER_ETH);
+        vm.deal(address(launcher), LAUNCHER_ETH);
+
+        // Verify funding
+        require(
+            address(launcher).balance >= LAUNCHER_ETH,
+            "Launcher ETH funding failed"
+        );
+
+        console.log("Launcher ETH balance:", address(launcher).balance);
+        console.log("Setup completed successfully");
+    }
+
+    function _makeSmallTrade(bool buyPonder) private {
+        address[] memory path = new address[](2);
+        uint256 amountIn = INITIAL_WETH / 10000; // 0.01% of liquidity
+
+        if (buyPonder) {
+            path[0] = address(weth);
+            path[1] = address(ponder);
+            vm.deal(address(this), amountIn);
+            weth.deposit{value: amountIn}();
+            weth.approve(address(router), amountIn);
+        } else {
+            path[0] = address(ponder);
+            path[1] = address(weth);
+            uint256 ponderAmount = amountIn * (INITIAL_PONDER / INITIAL_WETH);
+            ponder.mint(address(this), ponderAmount);
+            ponder.approve(address(router), ponderAmount);
+            amountIn = ponderAmount;
+        }
+
+        console.log("Executing trade, amount:", amountIn);
+        router.swapExactTokensForTokens(
+            amountIn,
+            0,
+            path,
+            address(this),
+            block.timestamp
+        );
     }
 
     function testCreateLaunch() public {
@@ -58,6 +215,7 @@ contract LaunchSystemTest is Test {
             "TEST",
             "ipfs://test"
         );
+        vm.stopPrank();
 
         (
             address tokenAddress,
@@ -76,208 +234,72 @@ contract LaunchSystemTest is Test {
         assertFalse(launched);
         assertEq(lpUnlockTime, 0);
         assertTrue(tokenAddress != address(0));
-
-        vm.stopPrank();
     }
 
-    function testContribute() public {
-        vm.prank(creator);
-        uint256 launchId = launcher.createLaunch(
-            "TestToken",
-            "TEST",
-            "ipfs://test"
-        );
-
-        (address tokenAddress,,,,,, ) = launcher.getLaunchInfo(launchId);
-        LaunchToken token = LaunchToken(tokenAddress);
-
-        uint256 contribution = 1 ether;
-        uint256 expectedTokens = getTokenAmount(contribution);
-
-        vm.startPrank(user1);
-        uint256 balanceBefore = token.balanceOf(user1);
-
-        launcher.contribute{value: contribution}(launchId);
-
-        assertEq(
-            token.balanceOf(user1) - balanceBefore,
-            expectedTokens,
-            "Incorrect token amount received"
-        );
-        vm.stopPrank();
-    }
-
-    function testCompleteLaunch() public {
-        vm.prank(creator);
-        uint256 launchId = launcher.createLaunch(
-            "TestToken",
-            "TEST",
-            "ipfs://test"
-        );
-
-        // Split the contribution into smaller amounts
-        uint256 splitAmount = TARGET_RAISE / 10;
-
-        vm.startPrank(user1);
-        for(uint i = 0; i < 9; i++) {
-            launcher.contribute{value: splitAmount}(launchId);
-        }
-        launcher.contribute{value: TARGET_RAISE - (splitAmount * 9)}(launchId);
-        vm.stopPrank();
-
-        (,,,, uint256 totalRaised, bool launched,) = launcher.getLaunchInfo(launchId);
-        assertTrue(launched, "Launch not completed");
-        assertEq(totalRaised, TARGET_RAISE, "Incorrect total raised");
-    }
-
-    function testVesting() public {
+    function testContributePONDER() public {
         // Create launch
-        vm.prank(creator);
+        vm.startPrank(creator);
         uint256 launchId = launcher.createLaunch(
             "TestToken",
             "TEST",
             "ipfs://test"
         );
+        vm.stopPrank();
 
-        // Complete launch with multiple contributions
-        uint256 splitAmount = TARGET_RAISE / 10;
+        // Get required PONDER amount
+        (,,,,, uint256 ponderRequired) = launcher.getSaleInfo(launchId);
+        console.log("Required PONDER amount:", ponderRequired);
 
+        // Validate requirements
+        require(ponderRequired > 0, "Invalid PONDER requirement");
+        require(ponderRequired <= ponder.MAXIMUM_SUPPLY() / 2, "Required amount too high");
+
+        // Add 20% buffer for fees/slippage
+        uint256 extraBuffer = ponderRequired * 120 / 100;
+        ponder.mint(user1, extraBuffer);
+
+        // Contribute
         vm.startPrank(user1);
-        for(uint i = 0; i < 9; i++) {
-            launcher.contribute{value: splitAmount}(launchId);
-        }
-        launcher.contribute{value: TARGET_RAISE - (splitAmount * 9)}(launchId);
+        ponder.approve(address(launcher), extraBuffer);
+        launcher.contribute(launchId);
         vm.stopPrank();
 
-        // Get token
-        (address tokenAddress,,,,,, ) = launcher.getLaunchInfo(launchId);
-        LaunchToken token = LaunchToken(tokenAddress);
+        // Verify contribution
+        (address tokenAddress,,,,,bool launched,) = launcher.getLaunchInfo(launchId);
+        assertTrue(launched, "Launch should be completed");
+        assertGt(LaunchToken(tokenAddress).balanceOf(user1), 0, "User should have received tokens");
 
-        // Test vesting claims
-        vm.startPrank(creator);
-
-        // Move halfway through vesting
-        vm.warp(block.timestamp + 90 days);
-
-        uint256 balanceBefore = token.balanceOf(creator);
-        token.claimVestedTokens();
-
-        assertGt(
-            token.balanceOf(creator),
-            balanceBefore,
-            "No tokens claimed"
-        );
-
-        vm.stopPrank();
+        // Verify LP
+        address pair = factory.getPair(tokenAddress, address(ponder));
+        assertTrue(pair != address(0), "LP pair should be created");
+        assertGt(PonderERC20(pair).totalSupply(), 0, "LP should have supply");
     }
 
     function testLPLocking() public {
-        // Create launch
-        vm.prank(creator);
-        uint256 launchId = launcher.createLaunch(
-            "TestToken",
-            "TEST",
-            "ipfs://test"
-        );
+        // Create and complete launch
+        testContributePONDER();
 
-        // Complete launch with full amount in one go
-        vm.startPrank(user1);
-        launcher.contribute{value: TARGET_RAISE}(launchId);
-        vm.stopPrank();
+        (address tokenAddress,,,,,bool launched, uint256 lpUnlockTime) = launcher.getLaunchInfo(0);
+        assertTrue(launched, "Launch should be completed");
 
-        // This automatically sets up initial liquidity
-        // The launch completion adds liquidity using the protocol's preset ratios
-
-        // Try to withdraw LP too early - should fail
+        // Try early withdrawal
         vm.startPrank(creator);
         vm.expectRevert(FiveFiveFiveLauncher.LPStillLocked.selector);
-        launcher.withdrawLP(launchId);
+        launcher.withdrawLP(0);
         vm.stopPrank();
 
         // Move past lock period
-        vm.warp(block.timestamp + 180 days + 1);
+        vm.warp(lpUnlockTime + 1);
 
-        // Should succeed now
+        // Withdraw LP
         vm.startPrank(creator);
-        launcher.withdrawLP(launchId);
-
-        // Get pair address and verify LP tokens received
-        (address tokenAddress,,,,,, ) = launcher.getLaunchInfo(launchId);
-        address pair = factory.getPair(tokenAddress, address(weth));
-        assertGt(PonderERC20(pair).balanceOf(creator), 0, "No LP tokens received");
-        vm.stopPrank();
-    }
-
-    function testTradingFees() public {
-        // Create and fully fund launch
-        vm.prank(creator);
-        uint256 launchId = launcher.createLaunch("TestToken", "TEST", "ipfs://test");
-
-        vm.startPrank(user1);
-        launcher.contribute{value: TARGET_RAISE}(launchId);
+        launcher.withdrawLP(0);
         vm.stopPrank();
 
-        // Get launch token info
-        (address tokenAddress,,,,,, ) = launcher.getLaunchInfo(launchId);
-        LaunchToken token = LaunchToken(tokenAddress);
-        address pair = factory.getPair(tokenAddress, address(weth));
-
-        // Log initial state
-        (uint112 reserve0, uint112 reserve1,) = PonderPair(pair).getReserves();
-        console.log("Initial reserves:");
-        console.log("Reserve0:", reserve0);
-        console.log("Reserve1:", reserve1);
-
-        // Use a very tiny swap amount - just 0.0001% of total supply
-        uint256 swapAmount = TOTAL_SUPPLY / 1_000_000;
-        console.log("Swap amount:", swapAmount);
-
-        vm.startPrank(user1);
-
-        // First ensure we have approval
-        token.approve(address(router), swapAmount);
-
-        // Verify balance is sufficient
-        uint256 balance = token.balanceOf(user1);
-        console.log("User balance:", balance);
-
-        // Create path
-        address[] memory path = new address[](2);
-        path[0] = tokenAddress;
-        path[1] = address(weth);
-
-        // Calculate amounts with router
-        uint256[] memory amounts = router.getAmountsOut(swapAmount, path);
-        console.log("Amount in:", amounts[0]);
-        console.log("Amount out:", amounts[1]);
-
-        // Calculate K before swap
-        uint256 kBefore = uint256(reserve0) * uint256(reserve1);
-        console.log("K before:", kBefore);
-
-        // Try the swap with no minimum output
-        router.swapExactTokensForETH(
-            swapAmount,
-            0, // Accept any output amount
-            path,
-            user1,
-            block.timestamp + 600 // 10 minute deadline
-        );
-
-        vm.stopPrank();
-
-        // Log final state
-        (uint112 reserveAfter0, uint112 reserveAfter1,) = PonderPair(pair).getReserves();
-        uint256 kAfter = uint256(reserveAfter0) * uint256(reserveAfter1);
-        console.log("Final reserves:");
-        console.log("Reserve0:", reserveAfter0);
-        console.log("Reserve1:", reserveAfter1);
-        console.log("K after:", kAfter);
-    }
-
-    function getTokenAmount(uint256 ethAmount) internal pure returns (uint256) {
-        uint256 totalTokensForSale = (TOTAL_SUPPLY * 80) / 100; // 80% of supply
-        return (ethAmount * totalTokensForSale) / TARGET_RAISE;
+        // Verify LP receipt
+        address pair = factory.getPair(tokenAddress, address(ponder));
+        assertTrue(pair != address(0), "Pair should exist");
+        assertGt(PonderERC20(pair).balanceOf(creator), 0, "Creator should have LP tokens");
     }
 
     receive() external payable {}

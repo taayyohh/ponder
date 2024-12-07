@@ -40,7 +40,7 @@ contract PonderIntegrationTest is Test {
     function setUp() public {
         // Deploy core contracts
         weth = new WETH9();
-        ponder = new PonderToken(treasury,treasury,treasury);
+        ponder = new PonderToken(treasury, treasury, treasury, address(this)); // Add launcher address
         factory = new PonderFactory(address(this), address(1));
         MockKKUBUnwrapper unwrapper = new MockKKUBUnwrapper(address(weth));
         router = new PonderRouter(address(factory), address(weth), address(unwrapper));

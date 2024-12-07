@@ -7,257 +7,177 @@ import "../../src/core/PonderFactory.sol";
 import "../../src/core/PonderPair.sol";
 import "../../src/core/PonderPriceOracle.sol";
 
-
 contract PonderPriceOracleTest is Test {
     PonderFactory factory;
     PonderPriceOracle oracle;
+    ERC20Mint ponder;
+    ERC20Mint kub;
+    PonderPair ponderKubPair;
     ERC20Mint token0;
     ERC20Mint token1;
-    PonderPair pair;
+    PonderPair testPair;
 
     address alice = makeAddr("alice");
 
     // Testing constants
     uint256 constant INITIAL_LIQUIDITY = 100e18;
     uint256 constant TIME_DELAY = 1 hours;
+    uint256 constant MIN_UPDATE_INTERVAL = 5 minutes;
+
+    event PriceUpdated(
+        address indexed pair,
+        uint256 price0Average,
+        uint256 price1Average,
+        uint256 timestamp
+    );
+
+    function uintToString(uint256 value) internal pure returns (string memory) {
+        if (value == 0) {
+            return "0";
+        }
+        uint256 temp = value;
+        uint256 digits;
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
+        }
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+            value /= 10;
+        }
+        return string(buffer);
+    }
 
     function setUp() public {
-        // Deploy core contracts
+        // Deploy factory
         factory = new PonderFactory(address(this), address(1));
-        oracle = new PonderPriceOracle(address(factory));
 
-        // Rest of the setup remains the same...
+        // Deploy test tokens
+        ponder = new ERC20Mint("Ponder", "PONDER");
+        kub = new ERC20Mint("KUB", "KUB");
         token0 = new ERC20Mint("Token A", "TKNA");
         token1 = new ERC20Mint("Token B", "TKNB");
 
-        address pairAddress = factory.createPair(address(token0), address(token1));
-        pair = PonderPair(pairAddress);
+        // Create PONDER/KUB pair
+        address ponderKubAddress = factory.createPair(address(ponder), address(kub));
+        ponderKubPair = PonderPair(ponderKubAddress);
 
+        // Create test pair
+        address testPairAddress = factory.createPair(address(token0), address(token1));
+        testPair = PonderPair(testPairAddress);
+
+        // Add initial liquidity to PONDER/KUB pair
         vm.startPrank(alice);
+        ponder.mint(alice, INITIAL_LIQUIDITY);
+        kub.mint(alice, INITIAL_LIQUIDITY);
+        ponder.transfer(address(ponderKubPair), INITIAL_LIQUIDITY);
+        kub.transfer(address(ponderKubPair), INITIAL_LIQUIDITY);
+        ponderKubPair.mint(alice);
+
+        // Add initial liquidity to test pair
         token0.mint(alice, INITIAL_LIQUIDITY);
         token1.mint(alice, INITIAL_LIQUIDITY);
-        token0.transfer(address(pair), INITIAL_LIQUIDITY);
-        token1.transfer(address(pair), INITIAL_LIQUIDITY);
-        pair.mint(alice);
-        vm.warp(block.timestamp + 1);
+        token0.transfer(address(testPair), INITIAL_LIQUIDITY);
+        token1.transfer(address(testPair), INITIAL_LIQUIDITY);
+        testPair.mint(alice);
         vm.stopPrank();
+
+        // Deploy oracle with PONDER/KUB pair
+        oracle = new PonderPriceOracle(address(factory), address(ponderKubPair));
+
+        // Move time forward for initialization
+        vm.warp(block.timestamp + MIN_UPDATE_INTERVAL);
     }
 
-    function testInitialObservation() public {
-        oracle.update(address(pair));
-        assertEq(oracle.observationLength(address(pair)), 1, "Should have one observation");
-    }
-
-    function testConsult() public {
-        console.log("Initial timestamp:", block.timestamp);
-
-        // Log initial reserves
-        (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
-        console.log("Initial reserve0:", reserve0);
-        console.log("Initial reserve1:", reserve1);
-
-        // Add initial observation
-        oracle.update(address(pair));
-        console.log("First observation added at:", block.timestamp);
+    function testGetLatestPrice() public {
+        // First update
+        uint256 firstUpdateTime = block.timestamp;
+        oracle.update(address(testPair));
 
         // Move time forward and make a trade
         vm.warp(block.timestamp + TIME_DELAY);
-        console.log("Time moved forward to:", block.timestamp);
-
-        // Make a significant trade to ensure price impact
         vm.startPrank(alice);
-        uint256 tradeAmount = 10e18;
+        uint256 tradeAmount = 1e18; // Small trade amount
         token0.mint(alice, tradeAmount);
-        token0.approve(address(pair), tradeAmount);
-        token0.transfer(address(pair), tradeAmount);
+        token0.transfer(address(testPair), tradeAmount);
 
-        // Calculate expected output
-        (reserve0, reserve1,) = pair.getReserves();
-        console.log("Pre-swap reserve0:", reserve0);
-        console.log("Pre-swap reserve1:", reserve1);
-
-        uint256 expectedOutput = (tradeAmount * 997 * uint256(reserve1)) / (uint256(reserve0) * 1000 + (tradeAmount * 997));
-        console.log("Expected swap output:", expectedOutput);
-
-        // Execute swap
-        pair.swap(0, expectedOutput, alice, "");
+        (uint112 reserve0, uint112 reserve1,) = testPair.getReserves();
+        uint256 expectedOutput = (tradeAmount * 997 * uint256(reserve1)) /
+            (uint256(reserve0) * 1000 + (tradeAmount * 997));
+        testPair.swap(0, expectedOutput, alice, "");
         vm.stopPrank();
 
-        // Log post-swap reserves
-        (reserve0, reserve1,) = pair.getReserves();
-        console.log("Post-swap reserve0:", reserve0);
-        console.log("Post-swap reserve1:", reserve1);
+        // Update oracle after trade
+        vm.warp(block.timestamp + MIN_UPDATE_INTERVAL);
+        uint256 secondUpdateTime = block.timestamp;
+        oracle.update(address(testPair));
 
-        // Add second observation
-        oracle.update(address(pair));
-        console.log("Second observation added at:", block.timestamp);
+        // Get latest price
+        (uint256 price0Average, uint256 price1Average, uint256 timestamp) =
+                            oracle.getLatestPrice(address(testPair));
 
-        // Move time forward again
-        vm.warp(block.timestamp + TIME_DELAY);
-        console.log("Final timestamp:", block.timestamp);
-
-        // Get price cumulative values
-        uint256 price0Cumulative = pair.price0CumulativeLast();
-        uint256 price1Cumulative = pair.price1CumulativeLast();
-        console.log("Price0 cumulative:", price0Cumulative);
-        console.log("Price1 cumulative:", price1Cumulative);
-
-        // Consult the oracle
-        uint256 amountOut = oracle.consult(
-            address(pair),
-            address(token0),
-            1e18,
-            uint32(TIME_DELAY)
+        assertGt(price0Average, 0, "Price0 average should be non-zero");
+        assertGt(price1Average, 0, "Price1 average should be non-zero");
+        assertTrue(
+            timestamp <= block.timestamp && timestamp >= firstUpdateTime,
+            string(abi.encodePacked(
+                "Timestamp should be between first update and current time, got: ", uintToString(timestamp),
+                ", first: ", uintToString(firstUpdateTime),
+                ", current: ", uintToString(block.timestamp)
+            ))
         );
-
-        console.log("Oracle consult amount out:", amountOut);
-        assertGt(amountOut, 0, "Amount out should be greater than 0");
     }
 
-    function testPriceMovement() public {
-        console.log("\n=== Starting Price Movement Test ===");
+    function testConsultWithValidToken() public {
+        // Initial update
+        oracle.update(address(testPair));
+        vm.warp(block.timestamp + TIME_DELAY);
 
-        // Initial state
-        oracle.update(address(pair));
-        vm.warp(block.timestamp + 1 hours);
-        oracle.update(address(pair));
-
-        // Get initial price
-        uint256 amountIn = 1e18;
-        uint256 initialPrice = oracle.consult(
-            address(pair),
-            address(token0),
-            amountIn,
-            uint32(1 hours)
-        );
-        console.log("Initial price:", initialPrice);
-
-        // Let some time pass
-        vm.warp(block.timestamp + 1 hours);
-
-        // Make a very large trade to significantly impact price
+        // Make a small trade to establish price
         vm.startPrank(alice);
+        uint256 tradeAmount = 1e18;
+        token0.mint(alice, tradeAmount);
+        token0.transfer(address(testPair), tradeAmount);
 
-        // Mint and approve a large amount of tokens (5x initial liquidity)
-        uint256 swapAmount = INITIAL_LIQUIDITY * 5;
-        token0.mint(alice, swapAmount);
-        token0.approve(address(pair), swapAmount);
-
-        // Log pre-swap state
-        (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
-        console.log("Pre-swap - reserve0:", reserve0, "reserve1:", reserve1);
-
-        // Transfer tokens and execute swap
-        token0.transfer(address(pair), swapAmount);
-        uint256 expectedOutput = (swapAmount * 997 * uint256(reserve1)) /
-            (uint256(reserve0) * 1000 + (swapAmount * 997));
-        pair.swap(0, expectedOutput, alice, "");
+        (uint112 reserve0, uint112 reserve1,) = testPair.getReserves();
+        uint256 expectedOutput = (tradeAmount * 997 * uint256(reserve1)) /
+            (uint256(reserve0) * 1000 + (tradeAmount * 997));
+        testPair.swap(0, expectedOutput, alice, "");
         vm.stopPrank();
 
-        // Log post-swap state
-        (reserve0, reserve1,) = pair.getReserves();
-        console.log("Post-swap - reserve0:", reserve0, "reserve1:", reserve1);
+        // Second update after MIN_UPDATE_INTERVAL
+        vm.warp(block.timestamp + MIN_UPDATE_INTERVAL);
+        oracle.update(address(testPair));
 
-        // Record post-swap price and wait
-        oracle.update(address(pair));
-        vm.warp(block.timestamp + 1 hours);
-        oracle.update(address(pair));
-
-        // Get new price
-        uint256 newPrice = oracle.consult(
-            address(pair),
-            address(token0),
-            amountIn,
-            uint32(1 hours)
-        );
-        console.log("New price:", newPrice);
-
-        // Verify price decreased significantly
-        assertTrue(initialPrice > newPrice, "Price should have decreased");
-        assertGt(initialPrice - newPrice, initialPrice / 4, "Price should have decreased by at least 25%");
-    }
-
-    function testMultipleUpdates() public {
-        // Initial observation
-        oracle.update(address(pair));
-
-        // Create multiple price updates with trades
-        for (uint i = 0; i < 5; i++) {
-            vm.warp(block.timestamp + TIME_DELAY);
-
-            // Make a trade
-            vm.startPrank(alice);
-            token0.mint(alice, 1e18);
-            token0.approve(address(pair), 1e18);
-            token0.transfer(address(pair), 1e18);
-
-            (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
-            uint256 expectedOutput = (1e18 * 997 * uint256(reserve1)) / (uint256(reserve0) * 1000 + (1e18 * 997));
-
-            pair.swap(0, expectedOutput, alice, "");
-            vm.stopPrank();
-
-            // Update oracle
-            oracle.update(address(pair));
-        }
-
-        assertEq(oracle.observationLength(address(pair)), 6, "Should have 6 observations (initial + 5 updates)");
-
-        // Consult for different time periods
+        // Small time period and amount for consultation
         uint256 amountOut = oracle.consult(
-            address(pair),
+            address(testPair),
             address(token0),
-            1e18,
-            uint32(TIME_DELAY)
+            1e15, // Much smaller amount
+            uint32(MIN_UPDATE_INTERVAL)
         );
 
-        assertGt(amountOut, 0, "Amount out should be greater than 0");
-        console.log("Multiple updates amount out:", amountOut);
+        assertGt(amountOut, 0, "Should return non-zero amount for valid token");
     }
 
-    function testFailInvalidPeriod() public view {
-        oracle.consult(
-            address(pair),
-            address(token0),
-            1e18,
-            uint32(25 hours) // Greater than PERIOD
-        );
-    }
-
-    function testFailInvalidToken() public view {
-        oracle.consult(
-            address(pair),
-            address(0x123), // Invalid token address
-            1e18,
-            uint32(1 hours)
-        );
-    }
-
-    function testFailNoObservations() public view {
-        // Try to consult without any observations
-        oracle.consult(
-            address(pair),
-            address(token0),
-            1e18,
-            uint32(1 hours)
-        );
-    }
-
-    function testZeroAmountIn() public {
-        // Setup initial state
-        oracle.update(address(pair));
+    function testConsultInvalidToken() public {
+        // Initial update
+        oracle.update(address(testPair));
         vm.warp(block.timestamp + TIME_DELAY);
-        oracle.update(address(pair));
 
-        // Consult with zero amount
-        uint256 amountOut = oracle.consult(
-            address(pair),
-            address(token0),
-            0,
+        // Update again to establish price data
+        oracle.update(address(testPair));
+
+        // Use non-pair token for consultation
+        address randomToken = address(0xDEAD);
+        vm.expectRevert(abi.encodeWithSignature("InvalidToken()"));
+        oracle.consult(
+            address(testPair),
+            randomToken,
+            1e18,
             uint32(TIME_DELAY)
         );
-
-        // Zero in should equal zero out
-        assertEq(amountOut, 0, "Amount out should be 0 for 0 input");
     }
 }

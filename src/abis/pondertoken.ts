@@ -16,6 +16,11 @@ export const pondertokenAbi = [
         "name": "_marketing",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "_launcher",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -174,6 +179,19 @@ export const pondertokenAbi = [
   },
   {
     "type": "function",
+    "name": "burn",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "claimTeamTokens",
     "inputs": [],
     "outputs": [],
@@ -201,6 +219,19 @@ export const pondertokenAbi = [
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "launcher",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -405,6 +436,19 @@ export const pondertokenAbi = [
   {
     "type": "function",
     "name": "teamVestingStart",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "totalBurned",
     "inputs": [],
     "outputs": [
       {
@@ -640,6 +684,11 @@ export const pondertokenAbi = [
   {
     "type": "error",
     "name": "NoTokensAvailable",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OnlyLauncherOrOwner",
     "inputs": []
   },
   {

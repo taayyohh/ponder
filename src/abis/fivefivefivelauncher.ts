@@ -16,6 +16,16 @@ export const fivefivefivelauncherAbi = [
         "name": "_feeCollector",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "_ponder",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_priceOracle",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -40,19 +50,6 @@ export const fivefivefivelauncherAbi = [
   {
     "type": "function",
     "name": "CREATOR_ALLOCATION",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "CREATOR_FEE",
     "inputs": [],
     "outputs": [
       {
@@ -104,7 +101,33 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "function",
-    "name": "PROTOCOL_FEE",
+    "name": "PONDER_BURN",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PONDER_LP_ALLOCATION",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PONDER_PROTOCOL_LP",
     "inputs": [],
     "outputs": [
       {
@@ -152,7 +175,7 @@ export const fivefivefivelauncherAbi = [
       }
     ],
     "outputs": [],
-    "stateMutability": "payable"
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -380,6 +403,16 @@ export const fivefivefivelauncherAbi = [
         "name": "tokensSold",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "ponderRequired",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "ponderCollected",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -393,6 +426,32 @@ export const fivefivefivelauncherAbi = [
         "name": "",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "ponder",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract PonderToken"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "priceOracle",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract PonderPriceOracle"
       }
     ],
     "stateMutability": "view"
@@ -612,6 +671,50 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "event",
+    "name": "PonderBurned",
+    "inputs": [
+      {
+        "name": "launchId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "burnAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "PonderContributed",
+    "inputs": [
+      {
+        "name": "launchId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "contributor",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ProtocolFeePaid",
     "inputs": [
       {
@@ -716,6 +819,11 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "error",
+    "name": "InsufficientPonder",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidAmount",
     "inputs": []
   },
@@ -737,6 +845,11 @@ export const fivefivefivelauncherAbi = [
   {
     "type": "error",
     "name": "LaunchNotFound",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "PriceOracleError",
     "inputs": []
   },
   {

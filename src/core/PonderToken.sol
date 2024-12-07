@@ -2,9 +2,14 @@
 pragma solidity ^0.8.19;
 
 import "./PonderERC20.sol";
-import "forge-std/console.sol";
 
 contract PonderToken is PonderERC20 {
+    ///  @notice  555 Launcher address
+    address public launcher;
+
+    /// @notice Track total burned PONDER
+    uint256 public totalBurned;
+
     /// @notice Address with minting privileges for farming rewards
     address public minter;
 
@@ -51,6 +56,7 @@ contract PonderToken is PonderERC20 {
     error VestingNotStarted();
     error NoTokensAvailable();
     error VestingNotEnded();
+    error OnlyLauncherOrOwner();
 
     event MinterUpdated(address indexed previousMinter, address indexed newMinter);
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
@@ -70,10 +76,13 @@ contract PonderToken is PonderERC20 {
     constructor(
         address _treasury,
         address _teamReserve,
-        address _marketing
+        address _marketing,
+        address _launcher
     ) PonderERC20("Ponder", "PONDER") {
         if (_treasury == address(0) || _teamReserve == address(0) || _marketing == address(0)) revert ZeroAddress();
 
+
+        launcher = _launcher;
         owner = msg.sender;
         deploymentTime = block.timestamp;
         treasury = _treasury;
@@ -105,12 +114,7 @@ contract PonderToken is PonderERC20 {
 
         uint256 totalVested = (TEAM_ALLOCATION * timeElapsed) / VESTING_DURATION;
 
-        console.log("Time elapsed:", timeElapsed);
-        console.log("Total vested:", totalVested);
-        console.log("Team tokens claimed:", teamTokensClaimed);
-
         uint256 claimable = totalVested > teamTokensClaimed ? totalVested - teamTokensClaimed : 0;
-        console.log("Claimable amount:", claimable);
 
         return claimable;
     }
@@ -121,8 +125,6 @@ contract PonderToken is PonderERC20 {
 
         uint256 vestedAmount = _calculateVestedAmount();
         if (vestedAmount == 0) revert NoTokensAvailable();
-
-        console.log("Claiming vested amount:", vestedAmount);
 
         // Update before minting
         teamTokensClaimed += vestedAmount;
@@ -161,5 +163,12 @@ contract PonderToken is PonderERC20 {
         owner = pendingOwner;
         pendingOwner = address(0);
         emit OwnershipTransferred(oldOwner, owner);
+    }
+
+    // @notice burn function that only launcher can call
+    function burn(uint256 amount) external {
+        if (msg.sender != launcher && msg.sender != owner) revert OnlyLauncherOrOwner();
+        _burn(msg.sender, amount);
+        totalBurned += amount;
     }
 }
