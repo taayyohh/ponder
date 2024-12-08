@@ -15,8 +15,8 @@ contract DeployBitkubScript is Script {
     // This equals approximately 3.168 PONDER per second (400M / (4 * 365 * 24 * 60 * 60))
     uint256 constant PONDER_PER_SECOND = 3168000000000000000; // 3.168 ether
 
-    address constant KKUB = 0x1de8A5c87d421f53eE4ae398cc766e62E88e9518;
-    // testnet - 0x1de8A5c87d421f53eE4ae398cc766e62E88e9518
+    address constant KKUB = 0xBa71efd94be63bD47B78eF458DE982fE29f552f7;
+    // testnet - 0xBa71efd94be63bD47B78eF458DE982fE29f552f7
     // mainnet - 0x67eBD850304c70d983B2d1b93ea79c7CD6c3F6b5
 
     error InvalidAddress();
