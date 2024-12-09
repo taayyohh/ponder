@@ -62,6 +62,8 @@ contract PonderToken is PonderERC20 {
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event TeamTokensClaimed(uint256 amount);
+    event LauncherUpdated(address indexed oldLauncher, address indexed newLauncher);
+
 
     modifier onlyOwner {
         if (msg.sender != owner) revert Forbidden();
@@ -77,7 +79,7 @@ contract PonderToken is PonderERC20 {
         address _treasury,
         address _teamReserve,
         address _marketing,
-        address _launcher
+        address _launcher // Can be address(0), will be set later through setLauncher
     ) PonderERC20("Ponder", "PONDER") {
         if (_treasury == address(0) || _teamReserve == address(0) || _marketing == address(0)) revert ZeroAddress();
 
@@ -147,6 +149,15 @@ contract PonderToken is PonderERC20 {
         address oldMinter = minter;
         minter = _minter;
         emit MinterUpdated(oldMinter, _minter);
+    }
+
+    /// @notice Update launcher address - can only be called by owner
+    /// @param _launcher New launcher address
+    function setLauncher(address _launcher) external onlyOwner {
+        if (_launcher == address(0)) revert ZeroAddress();
+        address oldLauncher = launcher;
+        launcher = _launcher;
+        emit LauncherUpdated(oldLauncher, _launcher);
     }
 
     /// @notice Begin ownership transfer process

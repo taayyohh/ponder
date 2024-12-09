@@ -54,6 +54,12 @@ contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
         uint256 ponderCollected;
     }
 
+    /// @notice Price tracking for each launch
+    struct PriceInfo {
+        uint256 initialPonderRequired;    // PONDER amount when launch starts
+        uint256 lastPriceUpdate;          // Last time price was checked
+    }
+
     /// @notice Protocol constants
     uint256 public constant TARGET_RAISE = 5555 ether;      // Target value in KUB
     uint256 public constant TOTAL_SUPPLY = 555_555_555 ether;
@@ -61,20 +67,23 @@ contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
     uint256 public constant CREATOR_ALLOCATION = 10;        // 10% to creator
     uint256 public constant CONTRIBUTOR_ALLOCATION = 80;    // 80% for sale
     uint256 public constant LP_LOCK_PERIOD = 180 days;
+    /// @notice Events are defined in IFiveFiveFiveLauncher interface
+    /// @notice Price protection constants
+    uint256 public constant MAX_PRICE_IMPACT = 500;     // 5% max price deviation
+    uint256 public constant PRICE_DENOMINATOR = 10000;
+
 
     // PONDER distribution ratios
     uint256 public constant PONDER_LP_ALLOCATION = 50;      // 50% to launch token/PONDER LP
     uint256 public constant PONDER_PROTOCOL_LP = 30;        // 30% to PONDER/KUB LP
     uint256 public constant PONDER_BURN = 20;              // 20% burned
 
-    /// @notice Fee denominator for percentage calculations
-    uint256 public constant FEE_DENOMINATOR = 10000;
-
     /// @notice Protocol state
     address public owner;
     address public feeCollector;
     uint256 public launchCount;
     mapping(uint256 => LaunchInfo) public launches;
+    mapping(uint256 => PriceInfo) public priceInfo;
 
     /// @notice Custom errors
     error LaunchNotFound();
@@ -88,8 +97,8 @@ contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
     error SoldOut();
     error InsufficientPonder();
     error PriceOracleError();
+    error PriceImpactTooHigh();
 
-    /// @notice Events are defined in IFiveFiveFiveLauncher interface
 
     /**
      * @notice Ensures caller is contract owner
@@ -181,49 +190,94 @@ contract FiveFiveFiveLauncher is IFiveFiveFiveLauncher {
     }
 
     /**
-     * @notice Allows users to contribute PONDER to a launch
+       * @notice Allows users to contribute any amount of PONDER to a launch
      * @param launchId The ID of the launch to contribute to
+     * @param amount The amount of PONDER to contribute
      */
-    function contribute(uint256 launchId) external {
+    function contribute(uint256 launchId, uint256 amount) external {
         LaunchInfo storage launch = launches[launchId];
+        PriceInfo storage prices = priceInfo[launchId];
+
         if(launch.tokenAddress == address(0)) revert LaunchNotFound();
         if(launch.launched) revert AlreadyLaunched();
+        if(amount == 0) revert InvalidAmount();
 
-        // Calculate exact PONDER required based on current price
-        uint256 ponderRequired;
+        // Calculate current PONDER required based on price oracle
+        uint256 currentPonderRequired;
         try priceOracle.consult(
             factory.getPair(address(ponder), router.WETH()),
             router.WETH(),
             TARGET_RAISE,
             24 hours
-        ) returns (uint256 amount) {
-            ponderRequired = amount;
+        ) returns (uint256 oracleAmount) {
+            currentPonderRequired = oracleAmount;
         } catch {
             revert PriceOracleError();
         }
 
-        // Ensure user has enough PONDER including potential slippage
-        uint256 requiredWithBuffer = ponderRequired * 120 / 100; // Add 20% buffer
+        // Store initial price on first contribution
+        if (prices.initialPonderRequired == 0) {
+            prices.initialPonderRequired = currentPonderRequired;
+        }
+
+        // Check price impact against initial price
+        uint256 priceDeviation;
+        if (currentPonderRequired > prices.initialPonderRequired) {
+            priceDeviation = ((currentPonderRequired - prices.initialPonderRequired) * PRICE_DENOMINATOR) / prices.initialPonderRequired;
+        } else {
+            priceDeviation = ((prices.initialPonderRequired - currentPonderRequired) * PRICE_DENOMINATOR) / prices.initialPonderRequired;
+        }
+
+        if (priceDeviation > MAX_PRICE_IMPACT) {
+            revert PriceImpactTooHigh();
+        }
+
+        // Update the required amount using initial price to keep it consistent
+        uint256 targetPonderRequired = prices.initialPonderRequired;
+        if (targetPonderRequired != launch.ponderRequired) {
+            launch.ponderRequired = targetPonderRequired;
+        }
+
+        // Calculate remaining amount needed
+        uint256 remaining = targetPonderRequired - launch.ponderCollected;
+        uint256 actualContribution = amount;
+
+        // If contribution would exceed target, only take what we need
+        if (amount > remaining) {
+            actualContribution = remaining;
+        }
+
+        // Ensure user has enough PONDER including buffer for slippage
+        uint256 requiredWithBuffer = actualContribution * 120 / 100; // Add 20% buffer
         if (ponder.balanceOf(msg.sender) < requiredWithBuffer) revert InsufficientPonder();
 
         // Transfer PONDER from contributor
-        ponder.transferFrom(msg.sender, address(this), ponderRequired);
+        ponder.transferFrom(msg.sender, address(this), amount);
 
-        // Calculate tokens to receive (80% of total supply)
-        uint256 tokensToReceive = (LaunchToken(launch.tokenAddress).TOTAL_SUPPLY() * CONTRIBUTOR_ALLOCATION) / 100;
+        // If we took less than they sent, return the excess
+        if (actualContribution < amount) {
+            ponder.transfer(msg.sender, amount - actualContribution);
+        }
+
+        // Calculate proportion of tokens to receive based on initial price
+        uint256 totalLaunchTokens = (LaunchToken(launch.tokenAddress).TOTAL_SUPPLY() * CONTRIBUTOR_ALLOCATION) / 100;
+        uint256 tokensToReceive = (totalLaunchTokens * actualContribution) / targetPonderRequired;
 
         // Update state
-        launch.tokensSold = tokensToReceive;
-        launch.ponderCollected = ponderRequired;
+        launch.tokensSold += tokensToReceive;
+        launch.ponderCollected += actualContribution;
+        prices.lastPriceUpdate = block.timestamp;
 
-        // Transfer launch tokens
+        // Transfer proportional launch tokens
         LaunchToken(launch.tokenAddress).transfer(msg.sender, tokensToReceive);
 
-        emit PonderContributed(launchId, msg.sender, ponderRequired);
-        emit TokenPurchased(launchId, msg.sender, ponderRequired, tokensToReceive);
+        emit PonderContributed(launchId, msg.sender, actualContribution);
+        emit TokenPurchased(launchId, msg.sender, actualContribution, tokensToReceive);
 
-        // Always finalize after successful contribution
-        _finalizeLaunch(launchId);
+        // Finalize if we've hit the target
+        if (launch.ponderCollected == targetPonderRequired) {
+            _finalizeLaunch(launchId);
+        }
     }
 
     /**

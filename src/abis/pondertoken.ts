@@ -383,6 +383,19 @@ export const pondertokenAbi = [
   },
   {
     "type": "function",
+    "name": "setLauncher",
+    "inputs": [
+      {
+        "name": "_launcher",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setMinter",
     "inputs": [
       {
@@ -572,6 +585,25 @@ export const pondertokenAbi = [
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "LauncherUpdated",
+    "inputs": [
+      {
+        "name": "oldLauncher",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newLauncher",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       }
     ],
     "anonymous": false

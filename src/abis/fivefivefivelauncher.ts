@@ -62,19 +62,6 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "function",
-    "name": "FEE_DENOMINATOR",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "LP_ALLOCATION",
     "inputs": [],
     "outputs": [
@@ -89,6 +76,19 @@ export const fivefivefivelauncherAbi = [
   {
     "type": "function",
     "name": "LP_LOCK_PERIOD",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_PRICE_IMPACT",
     "inputs": [],
     "outputs": [
       {
@@ -140,6 +140,19 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "function",
+    "name": "PRICE_DENOMINATOR",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "TARGET_RAISE",
     "inputs": [],
     "outputs": [
@@ -170,6 +183,11 @@ export const fivefivefivelauncherAbi = [
     "inputs": [
       {
         "name": "launchId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -439,6 +457,30 @@ export const fivefivefivelauncherAbi = [
         "name": "",
         "type": "address",
         "internalType": "contract PonderToken"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "priceInfo",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "initialPonderRequired",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "lastPriceUpdate",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -845,6 +887,11 @@ export const fivefivefivelauncherAbi = [
   {
     "type": "error",
     "name": "LaunchNotFound",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "PriceImpactTooHigh",
     "inputs": []
   },
   {

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "forge-std/Test.sol";
-import "forge-std/console.sol";
 import "../../src/core/PonderERC20.sol";
 import "../../src/core/PonderFactory.sol";
-import "../../src/core/PonderToken.sol";
 import "../../src/core/PonderPriceOracle.sol";
+import "../../src/core/PonderToken.sol";
 import "../../src/launch/FiveFiveFiveLauncher.sol";
 import "../../src/launch/LaunchToken.sol";
 import "../../src/periphery/PonderRouter.sol";
 import "../../test/mocks/WETH9.sol";
 import "../mocks/MockKKUBUnwrapper.sol";
+import "forge-std/Test.sol";
+import "forge-std/console.sol";
 
 contract LaunchSystemTest is Test {
     // Core contracts
@@ -246,28 +246,58 @@ contract LaunchSystemTest is Test {
         );
         vm.stopPrank();
 
-        // Get required PONDER amount
-        (,,,,, uint256 ponderRequired) = launcher.getSaleInfo(launchId);
-        console.log("Required PONDER amount:", ponderRequired);
+        // Make first contribution - 10% of oracle required amount (~5.555e24)
+        uint256 smallAmount = 0.5e24;
+        uint256 amountWithBuffer = (smallAmount * 120) / 100; // Add 20% buffer
+        console.log("First contribution amount:", smallAmount);
+        console.log("Amount with buffer:", amountWithBuffer);
 
-        // Validate requirements
-        require(ponderRequired > 0, "Invalid PONDER requirement");
-        require(ponderRequired <= ponder.MAXIMUM_SUPPLY() / 2, "Required amount too high");
+        // Mint tokens with buffer
+        ponder.mint(user1, amountWithBuffer);
 
-        // Add 20% buffer for fees/slippage
-        uint256 extraBuffer = ponderRequired * 120 / 100;
-        ponder.mint(user1, extraBuffer);
-
-        // Contribute
         vm.startPrank(user1);
-        ponder.approve(address(launcher), extraBuffer);
-        launcher.contribute(launchId);
+        ponder.approve(address(launcher), smallAmount);
+        launcher.contribute(launchId, smallAmount);
+
+        // Verify first contribution
+        (address tokenAddress,,,,, bool launched,) = launcher.getLaunchInfo(launchId);
+        assertFalse(launched, "Launch should not be completed yet");
+        assertGt(LaunchToken(tokenAddress).balanceOf(user1), 0, "User1 should have received tokens");
         vm.stopPrank();
 
-        // Verify contribution
-        (address tokenAddress,,,,,bool launched,) = launcher.getLaunchInfo(launchId);
-        assertTrue(launched, "Launch should be completed");
-        assertGt(LaunchToken(tokenAddress).balanceOf(user1), 0, "User should have received tokens");
+        // Second contribution - about 40% of required
+        uint256 secondAmount = 2e24;
+        uint256 secondWithBuffer = (secondAmount * 120) / 100;
+        console.log("Second contribution amount:", secondAmount);
+
+        // Mint for second user with buffer
+        ponder.mint(user2, secondWithBuffer);
+
+        vm.startPrank(user2);
+        ponder.approve(address(launcher), secondAmount);
+        launcher.contribute(launchId, secondAmount);
+        vm.stopPrank();
+
+        // Verify state - should still not be launched
+        (tokenAddress,,,,, launched,) = launcher.getLaunchInfo(launchId);
+        assertFalse(launched, "Launch should not be completed after second contribution");
+
+        // Final contribution to complete launch
+        uint256 finalAmount = 3.1e24; // Remainder to complete (~5.555e24 total)
+        uint256 finalWithBuffer = (finalAmount * 120) / 100;
+        console.log("Final contribution amount:", finalAmount);
+
+        // Mint for final contribution with buffer
+        ponder.mint(user2, finalWithBuffer);
+
+        vm.startPrank(user2);
+        ponder.approve(address(launcher), finalAmount);
+        launcher.contribute(launchId, finalAmount);
+        vm.stopPrank();
+
+        // Verify final state
+        (tokenAddress,,,,, launched,) = launcher.getLaunchInfo(launchId);
+        assertTrue(launched, "Launch should be completed after full contribution");
 
         // Verify LP
         address pair = factory.getPair(tokenAddress, address(ponder));
@@ -275,17 +305,78 @@ contract LaunchSystemTest is Test {
         assertGt(PonderERC20(pair).totalSupply(), 0, "LP should have supply");
     }
 
-    function testLPLocking() public {
-        // Create and complete launch
-        testContributePONDER();
+    function testContributeExcess() public {
+        // Create launch
+        vm.startPrank(creator);
+        uint256 launchId = launcher.createLaunch(
+            "TestToken",
+            "TEST",
+            "ipfs://test"
+        );
+        vm.stopPrank();
 
-        (address tokenAddress,,,,,bool launched, uint256 lpUnlockTime) = launcher.getLaunchInfo(0);
+        // Try to contribute 150% of the oracle required amount (~5.555e24)
+        uint256 excessAmount = 8e24;
+        uint256 amountWithBuffer = (excessAmount * 120) / 100; // Add 20% buffer
+
+        console.log("Attempting to contribute:", excessAmount);
+        console.log("Amount with buffer:", amountWithBuffer);
+
+        // Mint tokens with buffer
+        ponder.mint(user1, amountWithBuffer);
+
+        uint256 balanceBefore = ponder.balanceOf(user1);
+
+        vm.startPrank(user1);
+        ponder.approve(address(launcher), excessAmount);
+        launcher.contribute(launchId, excessAmount);
+
+        uint256 balanceAfter = ponder.balanceOf(user1);
+        uint256 actualContribution = balanceBefore - balanceAfter;
+
+        console.log("Balance before:", balanceBefore);
+        console.log("Balance after:", balanceAfter);
+        console.log("Actual contribution:", actualContribution);
+
+        // Verify excess was returned
+        assertLt(actualContribution, 6e24, "Should only use up to oracle required");
+        assertGt(actualContribution, 5e24, "Should use close to oracle required");
+
+        // Verify launch completed
+        (,,,,,bool launched,) = launcher.getLaunchInfo(launchId);
+        assertTrue(launched, "Launch should be completed");
+        vm.stopPrank();
+    }
+
+    function testLPLocking() public {
+        // Create and complete launch using partial contributions
+        vm.startPrank(creator);
+        uint256 launchId = launcher.createLaunch(
+            "TestToken",
+            "TEST",
+            "ipfs://test"
+        );
+        vm.stopPrank();
+
+        // Get required amount
+        (,,,,, uint256 ponderRequired) = launcher.getSaleInfo(launchId);
+
+        // Mint directly
+        ponder.mint(user1, ponderRequired);
+
+        // Complete the launch
+        vm.startPrank(user1);
+        ponder.approve(address(launcher), ponderRequired);
+        launcher.contribute(launchId, ponderRequired);
+        vm.stopPrank();
+
+        (address tokenAddress,,,,,bool launched, uint256 lpUnlockTime) = launcher.getLaunchInfo(launchId);
         assertTrue(launched, "Launch should be completed");
 
         // Try early withdrawal
         vm.startPrank(creator);
         vm.expectRevert(FiveFiveFiveLauncher.LPStillLocked.selector);
-        launcher.withdrawLP(0);
+        launcher.withdrawLP(launchId);
         vm.stopPrank();
 
         // Move past lock period
@@ -293,7 +384,7 @@ contract LaunchSystemTest is Test {
 
         // Withdraw LP
         vm.startPrank(creator);
-        launcher.withdrawLP(0);
+        launcher.withdrawLP(launchId);
         vm.stopPrank();
 
         // Verify LP receipt

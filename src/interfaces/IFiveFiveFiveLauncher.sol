@@ -44,7 +44,8 @@ interface IFiveFiveFiveLauncher {
 
     /// @notice Allows users to contribute PONDER to a launch
     /// @param launchId The ID of the launch to contribute to
-    function contribute(uint256 launchId) external;
+    /// @param amount The amount of ponder to contribute
+    function contribute(uint256 launchId, uint256 amount) external;
 
     /// @notice Allows creator to withdraw LP tokens after lock period
     /// @param launchId The ID of the launch to withdraw from

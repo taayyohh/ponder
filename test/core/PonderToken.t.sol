@@ -15,6 +15,7 @@ contract PonderTokenTest is Test {
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event TeamTokensClaimed(uint256 amount);
+    event LauncherUpdated(address indexed oldLauncher, address indexed newLauncher);
 
     function setUp() public {
         token = new PonderToken(treasury, teamReserve, marketing, address(this));
@@ -186,5 +187,48 @@ contract PonderTokenTest is Test {
 
     function testMarketingTokenAllocation() public {
         assertEq(token.balanceOf(token.marketing()), 100_000_000e18); // Verify marketing allocation
+    }
+
+    function testInitialStateWithNoLauncher() public {
+        // Deploy with no launcher
+        PonderToken noLauncherToken = new PonderToken(
+            treasury,
+            teamReserve,
+            marketing,
+            address(0)
+        );
+
+        assertEq(noLauncherToken.launcher(), address(0));
+
+        // Test setting launcher
+        vm.expectEmit(true, true, false, false);
+        emit LauncherUpdated(address(0), address(0x123));
+
+        vm.prank(address(this));
+        noLauncherToken.setLauncher(address(0x123));
+
+        assertEq(noLauncherToken.launcher(), address(0x123));
+    }
+
+    function testSetLauncher() public {
+        address newLauncher = address(0x123);
+
+        vm.expectEmit(true, true, false, false);
+        emit LauncherUpdated(address(this), newLauncher);
+
+        token.setLauncher(newLauncher);
+        assertEq(token.launcher(), newLauncher);
+    }
+
+    // Change from testRevertlSetLauncherUnauthorized to:
+    function testRevertSetLauncherUnauthorized() public {
+        vm.expectRevert(PonderToken.Forbidden.selector);
+        vm.prank(address(0x456));
+        token.setLauncher(address(0x123));
+    }
+
+    function testRevertSetLauncherToZero() public {
+        vm.expectRevert(PonderToken.ZeroAddress.selector);
+        token.setLauncher(address(0));
     }
 }

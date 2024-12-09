@@ -19,9 +19,14 @@ contract DeployBitkubScript is Script {
     // testnet - 0xBa71efd94be63bD47B78eF458DE982fE29f552f7
     // mainnet - 0x67eBD850304c70d983B2d1b93ea79c7CD6c3F6b5
 
+    // Initial liquidity constants (PONDER = $0.0001, KUB = $2.80)
+    uint256 constant INITIAL_KUB_AMOUNT = 10 ether;                 // 10 KUB
+    uint256 constant INITIAL_PONDER_AMOUNT = 28_000 ether;       // 28K PONDER
+
     error InvalidAddress();
     error PairCreationFailed();
     error DeploymentFailed(string name);
+    error LiquidityAddFailed();
 
     struct DeploymentAddresses {
         address ponder;
@@ -48,6 +53,26 @@ contract DeployBitkubScript is Script {
         }
     }
 
+    function setupInitialPrices(
+        PonderToken ponder,
+        PonderRouter router,
+        PonderPriceOracle oracle,
+        address ponderKubPair
+    ) internal {
+        console.log("Initial timestamp:", block.timestamp);
+
+        // Add liquidity
+        ponder.approve(address(router), INITIAL_PONDER_AMOUNT);
+        router.addLiquidityETH{value: INITIAL_KUB_AMOUNT}(
+            address(ponder),
+            INITIAL_PONDER_AMOUNT,
+            INITIAL_PONDER_AMOUNT,
+            INITIAL_KUB_AMOUNT,
+            address(this),
+            block.timestamp + 1 hours
+        );
+    }
+
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address treasury = vm.envAddress("TREASURY_ADDRESS");
@@ -70,6 +95,7 @@ contract DeployBitkubScript is Script {
         // Final configuration
         PonderToken(addresses.ponder).setMinter(addresses.masterChef);
         PonderFactory(addresses.factory).setLauncher(addresses.launcher);
+        console.log("Factory launcher set to:", addresses.launcher);
 
         vm.stopBroadcast();
 
@@ -96,38 +122,28 @@ contract DeployBitkubScript is Script {
         );
         _verifyContract("PonderRouter", address(router));
 
-        // 2. Deploy launcher first (without PONDER and oracle)
-        FiveFiveFiveLauncher tempLauncher = new FiveFiveFiveLauncher(
-            address(factory),
-            payable(address(router)),
-            treasury,
-            address(0),
-            address(0)
-        );
-        _verifyContract("Initial Launcher", address(tempLauncher));
-
-        // 3. Deploy PONDER with launcher address
+        // 2. Deploy PONDER with no launcher initially
         PonderToken ponder = new PonderToken(
             treasury,
             teamReserve,
             marketing,
-            address(tempLauncher)
+            address(0)  // No launcher initially
         );
         _verifyContract("PonderToken", address(ponder));
 
-        // 4. Create PONDER/KKUB pair
+        // 3. Create PONDER/KKUB pair
         factory.createPair(address(ponder), KKUB);
         address ponderKubPair = factory.getPair(address(ponder), KKUB);
         if (ponderKubPair == address(0)) revert PairCreationFailed();
 
-        // 5. Deploy oracle
+        // 4. Deploy oracle
         PonderPriceOracle oracle = new PonderPriceOracle(
             address(factory),
             ponderKubPair
         );
         _verifyContract("PonderPriceOracle", address(oracle));
 
-        // 6. Deploy final launcher with PONDER and oracle
+        // 5. Deploy launcher
         FiveFiveFiveLauncher launcher = new FiveFiveFiveLauncher(
             address(factory),
             payable(address(router)),
@@ -135,7 +151,11 @@ contract DeployBitkubScript is Script {
             address(ponder),
             address(oracle)
         );
-        _verifyContract("Final Launcher", address(launcher));
+        _verifyContract("Launcher", address(launcher));
+
+        // 6. Set launcher in PONDER token
+        ponder.setLauncher(address(launcher));
+        console.log("PONDER launcher set to:", address(launcher));
 
         // 7. Deploy MasterChef
         PonderMasterChef masterChef = new PonderMasterChef(
@@ -146,6 +166,9 @@ contract DeployBitkubScript is Script {
             block.timestamp
         );
         _verifyContract("MasterChef", address(masterChef));
+
+        // 8. Setup initial prices and liquidity
+        setupInitialPrices(ponder, router, oracle, ponderKubPair);
 
         return DeploymentAddresses({
             ponder: address(ponder),
@@ -168,7 +191,7 @@ contract DeployBitkubScript is Script {
         console.log(name, "deployed at:", contractAddress);
     }
 
-    function logDeployment(DeploymentAddresses memory addresses, address treasury) internal pure {
+    function logDeployment(DeploymentAddresses memory addresses, address treasury) internal view {
         console.log("\nDeployment Summary on Bitkub Chain:");
         console.log("--------------------------------");
         console.log("KKUB Address:", KKUB);
@@ -181,6 +204,13 @@ contract DeployBitkubScript is Script {
         console.log("MasterChef:", addresses.masterChef);
         console.log("FiveFiveFiveLauncher:", addresses.launcher);
         console.log("Treasury:", treasury);
+
+        console.log("\nInitial Liquidity Details:");
+        console.log("--------------------------------");
+        console.log("Initial KUB:", INITIAL_KUB_AMOUNT / 1e18);
+        console.log("Initial PONDER:", INITIAL_PONDER_AMOUNT / 1e18);
+        console.log("Initial PONDER Price in USD: $0.0001");
+        console.log("Initial PONDER/KUB Rate:", INITIAL_PONDER_AMOUNT / INITIAL_KUB_AMOUNT);
 
         console.log("\nToken Allocation Summary:");
         console.log("--------------------------------");
