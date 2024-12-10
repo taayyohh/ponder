@@ -5,23 +5,26 @@ import "../interfaces/IPonderPair.sol";
 import "../interfaces/IPonderFactory.sol";
 import "../libraries/PonderOracleLibrary.sol";
 
+/// @title PonderPriceOracle
+/// @notice Oracle for getting token prices from Ponder pairs with TWAP support
+/// @dev Based on Uniswap V2 Oracle design with optimizations for meme token launches
 contract PonderPriceOracle {
     struct Observation {
-        uint256 timestamp;
-        uint256 price0Cumulative;
-        uint256 price1Cumulative;
-        uint256 price0Average;    // Added for quick TWAP access
-        uint256 price1Average;    // Added for quick TWAP access
+        uint32 timestamp;
+        uint224 price0Cumulative;
+        uint224 price1Cumulative;
     }
 
-    address public immutable factory;
-    address public immutable ponderKubPair;  // Added for quick access to PONDER/KUB pair
-    uint256 public constant PERIOD = 24 hours;
-    uint256 public constant MIN_UPDATE_INTERVAL = 5 minutes;  // Added minimum update interval
+    uint16 public constant MAX_OBSERVATIONS = 60; // 5 hours with 5-min updates
+    uint32 public constant PERIOD = 24 hours;
+    uint32 public constant MIN_UPDATE_DELAY = 5 minutes;
 
-    // Price observations mapped by pair address
+    address public immutable factory;
+    address public immutable ponderKubPair;
+    address public immutable stablecoin;
+
     mapping(address => Observation[]) public observations;
-    // Track last update time to prevent manipulation
+    mapping(address => uint256) public currentIndex;
     mapping(address => uint256) public lastUpdateTime;
 
     error InvalidPair();
@@ -31,184 +34,219 @@ contract PonderPriceOracle {
     error UpdateTooFrequent();
     error StalePrice();
 
-    event PriceUpdated(
-        address indexed pair,
-        uint256 price0Average,
-        uint256 price1Average,
-        uint256 timestamp
-    );
-
-    constructor(address _factory, address _ponderKubPair) {
+    constructor(address _factory, address _ponderKubPair, address _stablecoin) {
         factory = _factory;
         ponderKubPair = _ponderKubPair;
+        stablecoin = _stablecoin;
     }
 
     function update(address pair) external {
-        // Validate update frequency
-        if (block.timestamp < lastUpdateTime[pair] + MIN_UPDATE_INTERVAL) {
-            revert UpdateTooFrequent();
-        }
+        if (block.timestamp < lastUpdateTime[pair] + MIN_UPDATE_DELAY) revert UpdateTooFrequent();
+        if (!_isValidPair(pair)) revert InvalidPair();
 
-        // Validate pair
-        if (IPonderFactory(factory).getPair(
-            IPonderPair(pair).token0(),
-            IPonderPair(pair).token1()
-        ) != pair) {
-            revert InvalidPair();
-        }
-
-        // Get current prices
         (uint256 price0Cumulative, uint256 price1Cumulative, uint32 blockTimestamp) =
                             PonderOracleLibrary.currentCumulativePrices(pair);
 
-        // Calculate TWAPs if we have previous observations
-        Observation[] storage history = observations[pair];
+        _updateObservations(pair, price0Cumulative, price1Cumulative);
 
-        uint256 price0Average = 0;
-        uint256 price1Average = 0;
-
-        if (history.length > 0) {
-            Observation storage lastObs = history[history.length - 1];
-            uint256 timeElapsed = blockTimestamp - lastObs.timestamp;
-
-            if (timeElapsed > 0) {
-                price0Average = (price0Cumulative - lastObs.price0Cumulative) / timeElapsed;
-                price1Average = (price1Cumulative - lastObs.price1Cumulative) / timeElapsed;
-            }
-        }
-
-        // Store new observation
-        observations[pair].push(Observation({
-            timestamp: blockTimestamp,
-            price0Cumulative: price0Cumulative,
-            price1Cumulative: price1Cumulative,
-            price0Average: price0Average,
-            price1Average: price1Average
-        }));
-
-        lastUpdateTime[pair] = block.timestamp;
-
-        emit PriceUpdated(pair, price0Average, price1Average, blockTimestamp);
+        emit PriceUpdated(pair, price0Cumulative, price1Cumulative, blockTimestamp);
     }
 
-    function consult(
+    function getPrice(
         address pair,
         address tokenIn,
-        uint256 amountIn,
-        uint32 periodInSeconds
-    ) external view returns (uint256 amountOut) {
-        if (periodInSeconds == 0 || periodInSeconds > PERIOD) revert InvalidPeriod();
-        if (amountIn == 0) return 0;
+        uint256 amountIn
+    ) external view returns (uint256 amountOut, bool usedReserves) {
+        IPonderPair pairContract = IPonderPair(pair);
+        (uint8 decimalsIn, uint8 decimalsOut) = _getDecimals(pairContract, tokenIn);
 
-        Observation[] storage history = observations[pair];
-        if (history.length == 0) revert InsufficientHistory();
+        // Try TWAP first
+        if (lastUpdateTime[pair] > 0 && block.timestamp <= lastUpdateTime[pair] + PERIOD) {
+            (uint256 price0Cumulative, uint256 price1Cumulative, uint32 blockTimestamp) =
+                                PonderOracleLibrary.currentCumulativePrices(pair);
 
-        // Check for stale prices
-        if (block.timestamp > lastUpdateTime[pair] + PERIOD) {
-            revert StalePrice();
-        }
+            (uint256 oldPrice0Cumulative, uint256 oldPrice1Cumulative, uint256 timestamp) =
+                            _findClosestObservation(pair, blockTimestamp - 30 minutes);
 
-        // Get current cumulative prices and timestamp
-        (uint256 price0Cumulative, uint256 price1Cumulative, uint32 blockTimestamp) =
-                            PonderOracleLibrary.currentCumulativePrices(pair);
-
-        // Find observation from periodInSeconds ago
-        uint256 targetTimestamp = blockTimestamp - periodInSeconds;
-        (uint256 oldPrice0Cumulative, uint256 oldPrice1Cumulative, uint256 oldTimestamp) =
-                        _findObservation(pair, targetTimestamp);
-
-        uint32 timeElapsed = blockTimestamp - uint32(oldTimestamp);
-        require(timeElapsed > 0, "PonderPriceOracle: NO_TIME_ELAPSED");
-
-        if (tokenIn == IPonderPair(pair).token0()) {
-            return PonderOracleLibrary.computeAmountOut(
-                oldPrice0Cumulative,
-                price0Cumulative,
-                timeElapsed,
-                amountIn
-            );
-        } else if (tokenIn == IPonderPair(pair).token1()) {
-            return PonderOracleLibrary.computeAmountOut(
-                oldPrice1Cumulative,
-                price1Cumulative,
-                timeElapsed,
-                amountIn
-            );
-        } else {
-            revert InvalidToken();
-        }
-    }
-
-    // Quick access function for PONDER/KUB price
-    function getPonderKubPrice(uint32 periodInSeconds) external view returns (uint256) {
-        return this.consult(
-            ponderKubPair,
-            IPonderPair(ponderKubPair).token1(), // KUB
-            1e18,                                // 1 KUB
-            periodInSeconds
-        );
-    }
-
-    function _findObservation(
-        address pair,
-        uint256 targetTimestamp
-    ) private view returns (
-        uint256 price0Cumulative,
-        uint256 price1Cumulative,
-        uint256 timestamp
-    ) {
-        Observation[] storage observations_ = observations[pair];
-        if (observations_.length == 0) revert InsufficientHistory();
-
-        // If only one observation, return it
-        if (observations_.length == 1) {
-            Observation memory firstObs = observations_[0];
-            return (
-                firstObs.price0Cumulative,
-                firstObs.price1Cumulative,
-                firstObs.timestamp
-            );
-        }
-
-        // Binary search for closest observation
-        uint256 left = 0;
-        uint256 right = observations_.length - 1;
-
-        while (left < right) {
-            uint256 mid = (left + right + 1) / 2;
-            if (observations_[mid].timestamp <= targetTimestamp) {
-                left = mid;
-            } else {
-                right = mid - 1;
+            uint32 timeElapsed = blockTimestamp - uint32(timestamp);
+            if (timeElapsed > 0) {
+                bool isToken0 = tokenIn == pairContract.token0();
+                return (
+                    _calculateAmount(
+                    isToken0 ? oldPrice0Cumulative : oldPrice1Cumulative,
+                    isToken0 ? price0Cumulative : price1Cumulative,
+                    timeElapsed,
+                    amountIn,
+                    decimalsIn,
+                    decimalsOut
+                ),
+                    false
+                );
             }
         }
 
-        Observation memory observation = observations_[left];
-        return (
-            observation.price0Cumulative,
-            observation.price1Cumulative,
-            observation.timestamp
-        );
+        // Fall back to spot price
+        return _getSpotPrice(pairContract, tokenIn, amountIn, decimalsIn, decimalsOut);
     }
 
-    // View functions for analysis
-    function observationLength(address pair) external view returns (uint256) {
-        return observations[pair].length;
+    function getPriceInUSD(
+        address pair,
+        address tokenIn,
+        uint256 amountIn
+    ) external view returns (uint256 amountUSD, bool usedReserves) {
+        address stablePair = IPonderFactory(factory).getPair(tokenIn, stablecoin);
+        if (stablePair == address(0)) {
+            return _getPriceViaKUB(pair, tokenIn, amountIn);
+        }
+        return this.getPrice(stablePair, tokenIn, amountIn);
     }
 
     function getLatestPrice(address pair) external view returns (
-        uint256 price0Average,
-        uint256 price1Average,
+        uint256 price0,
+        uint256 price1,
         uint256 timestamp
     ) {
-        Observation[] storage history = observations[pair];
-        if (history.length == 0) revert InsufficientHistory();
+        (uint112 reserve0, uint112 reserve1,) = IPonderPair(pair).getReserves();
+        price0 = uint256(reserve1) * 1e18 / uint256(reserve0);
+        price1 = uint256(reserve0) * 1e18 / uint256(reserve1);
+        timestamp = block.timestamp;
+    }
 
-        Observation storage latest = history[history.length - 1];
+    function _updateObservations(
+        address pair,
+        uint256 price0Cumulative,
+        uint256 price1Cumulative
+    ) internal {
+        Observation[] storage history = observations[pair];
+
+        if (history.length == 0) {
+            history.push(Observation({
+                timestamp: uint32(block.timestamp),
+                price0Cumulative: uint224(price0Cumulative),
+                price1Cumulative: uint224(price1Cumulative)
+            }));
+            for (uint16 i = 1; i < MAX_OBSERVATIONS; i++) {
+                history.push(history[0]);
+            }
+            currentIndex[pair] = 0;
+        } else {
+            uint256 index = (currentIndex[pair] + 1) % MAX_OBSERVATIONS;
+            history[index] = Observation({
+                timestamp: uint32(block.timestamp),
+                price0Cumulative: uint224(price0Cumulative),
+                price1Cumulative: uint224(price1Cumulative)
+            });
+            currentIndex[pair] = index;
+        }
+
+        lastUpdateTime[pair] = block.timestamp;
+    }
+
+    function _findClosestObservation(
+        address pair,
+        uint256 targetTimestamp
+    ) internal view returns (uint256, uint256, uint256) {
+        Observation[] storage history = observations[pair];
+        uint256 currentIdx = currentIndex[pair];
+
+        for (uint16 i = 0; i < MAX_OBSERVATIONS; i++) {
+            uint256 index = (currentIdx + MAX_OBSERVATIONS - i) % MAX_OBSERVATIONS;
+            if (history[index].timestamp <= targetTimestamp) {
+                return (
+                    history[index].price0Cumulative,
+                    history[index].price1Cumulative,
+                    history[index].timestamp
+                );
+            }
+        }
+
+        uint256 oldestIndex = (currentIdx + 1) % MAX_OBSERVATIONS;
         return (
-            latest.price0Average,
-            latest.price1Average,
-            latest.timestamp
+            history[oldestIndex].price0Cumulative,
+            history[oldestIndex].price1Cumulative,
+            history[oldestIndex].timestamp
         );
     }
+
+    function _calculateAmount(
+        uint256 oldPrice,
+        uint256 newPrice,
+        uint32 timeElapsed,
+        uint256 amountIn,
+        uint8 decimalsIn,
+        uint8 decimalsOut
+    ) internal pure returns (uint256) {
+        uint256 priceDiff = newPrice - oldPrice;
+        uint256 priceAverage = (priceDiff * 1e18) / timeElapsed;
+        uint256 scaledAmount = (amountIn * (10 ** decimalsOut)) / (10 ** decimalsIn);
+        return (scaledAmount * priceAverage) / 1e18;
+    }
+
+    function _getSpotPrice(
+        IPonderPair pairContract,
+        address tokenIn,
+        uint256 amountIn,
+        uint8 decimalsIn,
+        uint8 decimalsOut
+    ) internal view returns (uint256, bool) {
+        (uint112 reserve0, uint112 reserve1,) = pairContract.getReserves();
+        if (tokenIn == pairContract.token0()) {
+            return (
+                uint256(reserve1) * amountIn * (10 ** decimalsOut) /
+                (uint256(reserve0) * (10 ** decimalsIn)),
+                true
+            );
+        } else {
+            return (
+                uint256(reserve0) * amountIn * (10 ** decimalsOut) /
+                (uint256(reserve1) * (10 ** decimalsIn)),
+                true
+            );
+        }
+    }
+
+    function _getPriceViaKUB(
+        address pair,
+        address tokenIn,
+        uint256 amountIn
+    ) internal view returns (uint256, bool) {
+        address kubToken = IPonderPair(ponderKubPair).token1();
+        address kubPair = IPonderFactory(factory).getPair(tokenIn, kubToken);
+        if (kubPair == address(0)) return (0, true);
+
+        (uint256 amountKub, bool usedReservesKub) = this.getPrice(kubPair, tokenIn, amountIn);
+        address kubStablePair = IPonderFactory(factory).getPair(kubToken, stablecoin);
+        if (kubStablePair == address(0)) return (0, true);
+
+        (uint256 amountUSDFinal, bool usedReservesUSD) = this.getPrice(kubStablePair, kubToken, amountKub);
+        return (amountUSDFinal, usedReservesKub || usedReservesUSD);
+    }
+
+    function _getDecimals(
+        IPonderPair pairContract,
+        address tokenIn
+    ) internal view returns (uint8 decimalsIn, uint8 decimalsOut) {
+        address token0 = pairContract.token0();
+        if (tokenIn == token0) {
+            decimalsIn = IERC20(token0).decimals();
+            decimalsOut = IERC20(pairContract.token1()).decimals();
+        } else {
+            decimalsIn = IERC20(pairContract.token1()).decimals();
+            decimalsOut = IERC20(token0).decimals();
+        }
+    }
+
+    function _isValidPair(address pair) internal view returns (bool) {
+        return IPonderFactory(factory).getPair(
+            IPonderPair(pair).token0(),
+            IPonderPair(pair).token1()
+        ) == pair;
+    }
+
+    event PriceUpdated(
+        address indexed pair,
+        uint256 price0Cumulative,
+        uint256 price1Cumulative,
+        uint256 timestamp
+    );
 }

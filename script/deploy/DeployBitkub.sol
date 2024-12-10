@@ -19,6 +19,9 @@ contract DeployBitkubScript is Script {
     // testnet - 0xBa71efd94be63bD47B78eF458DE982fE29f552f7
     // mainnet - 0x67eBD850304c70d983B2d1b93ea79c7CD6c3F6b5
 
+    //TODO: CHANGE ANDD MAINNET TESTNET
+    address constant USDT_ADDRESS = 0xBa71efd94be63bD47B78eF458DE982fE29f552f7;
+
     // Initial liquidity constants (PONDER = $0.0001, KUB = $2.80)
     uint256 constant INITIAL_KUB_AMOUNT = 10 ether;                 // 10 KUB
     uint256 constant INITIAL_PONDER_AMOUNT = 28_000 ether;       // 28K PONDER
@@ -139,9 +142,12 @@ contract DeployBitkubScript is Script {
         // 4. Deploy oracle
         PonderPriceOracle oracle = new PonderPriceOracle(
             address(factory),
-            ponderKubPair
+            ponderKubPair,
+            USDT_ADDRESS // Add USDT address for your chain
         );
+
         _verifyContract("PonderPriceOracle", address(oracle));
+        oracle.update(ponderKubPair);
 
         // 5. Deploy launcher
         FiveFiveFiveLauncher launcher = new FiveFiveFiveLauncher(
