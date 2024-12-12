@@ -41,7 +41,7 @@ contract PonderIntegrationTest is Test {
         // Deploy core contracts
         weth = new WETH9();
         ponder = new PonderToken(treasury, treasury, treasury, address(this)); // Add launcher address
-        factory = new PonderFactory(address(this), address(1));
+        factory = new PonderFactory(address(this), address(1), address(2), address(3));
         MockKKUBUnwrapper unwrapper = new MockKKUBUnwrapper(address(weth));
         router = new PonderRouter(address(factory), address(weth), address(unwrapper));
 

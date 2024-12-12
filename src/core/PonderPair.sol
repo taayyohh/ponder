@@ -1,24 +1,30 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "./PonderERC20.sol";
-import "../interfaces/IPonderPair.sol";
-import "../interfaces/IPonderFactory.sol";
-import "../interfaces/IPonderCallee.sol";
 import "../interfaces/ILaunchToken.sol";
+import "../interfaces/IPonderCallee.sol";
+import "../interfaces/IPonderFactory.sol";
+import "../interfaces/IPonderPair.sol";
+import "../interfaces/IPonderRouter.sol";
 
 import "../libraries/Math.sol";
 import "../libraries/UQ112x112.sol";
+import "./PonderERC20.sol";
 
 contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
     using UQ112x112 for uint224;
 
+    // Fee split configuration
+    uint256 private constant STAKING_FEE_SPLIT = 5000; // 50% in basis points
+    uint256 private constant BASIS_POINTS = 10000;
     uint256 public constant override MINIMUM_LIQUIDITY = 1000;
     bytes4 private constant SELECTOR = bytes4(keccak256(bytes("transfer(address,uint256)")));
 
     address public override factory;
     address public override token0;
     address public override token1;
+    address public immutable stablecoin;
+    IPonderRouter public immutable router;
 
     // Reserve tracking
     uint112 private reserve0;
@@ -28,7 +34,7 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
     // Price tracking for oracles
     uint256 public override price0CumulativeLast;
     uint256 public override price1CumulativeLast;
-    uint256 public override kLast; // Reserve0 * Reserve1, as of immediately after the most recent liquidity event
+    uint256 public override kLast;
 
     // Lock for single-transaction reentrancy guard
     uint256 private unlocked = 1;
@@ -40,8 +46,10 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
         unlocked = 1;
     }
 
-    constructor() {
+    constructor(address _stablecoin, address _router) {
         factory = msg.sender;
+        stablecoin = _stablecoin;
+        router = IPonderRouter(_router);
     }
 
     function launcher() public view returns (address) {
@@ -136,36 +144,39 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
                 if (rootK > rootKLast) {
                     uint256 numerator = totalSupply() * (rootK - rootKLast);
                     uint256 denominator = rootK * 5 + rootKLast;
-                    uint256 liquidity = numerator / denominator;
+                    uint256 totalFees = numerator / denominator;
 
-                    if (liquidity > 0) {
-                        // Check if either token0 is a LaunchToken
+                    // Split fees between LP and staking
+                    uint256 lpFees = (totalFees * (BASIS_POINTS - STAKING_FEE_SPLIT)) / BASIS_POINTS;
+                    uint256 stakingFees = (totalFees * STAKING_FEE_SPLIT) / BASIS_POINTS;
+
+                    if (stakingFees > 0) {
+                        _handleStakingFees(stakingFees, _reserve0, _reserve1);
+                    }
+
+                    if (lpFees > 0) {
+                        // Handle LaunchToken fees as before
                         try ILaunchToken(token0).launcher() returns (address launchToken0Launcher) {
                             if (launchToken0Launcher == launcher()) {
                                 address tokenCreator = ILaunchToken(token0).creator();
-                                // Adjust protocol share to maintain 0.3% total fee
-                                // Creator gets 0.1% (1/3 of 0.3%)
-                                // Protocol gets 0.2% (2/3 of 0.3%)
-                                uint256 creatorShare = liquidity / 3;
+                                uint256 creatorShare = lpFees / 3;
                                 _mint(tokenCreator, creatorShare);
-                                _mint(feeTo, liquidity - creatorShare);
+                                _mint(feeTo, lpFees - creatorShare);
                                 return true;
                             }
                         } catch {}
 
-                        // Check if token1 is a LaunchToken if token0 wasn't
                         try ILaunchToken(token1).launcher() returns (address launchToken1Launcher) {
                             if (launchToken1Launcher == launcher()) {
                                 address tokenCreator = ILaunchToken(token1).creator();
-                                uint256 creatorShare = liquidity / 3;
+                                uint256 creatorShare = lpFees / 3;
                                 _mint(tokenCreator, creatorShare);
-                                _mint(feeTo, liquidity - creatorShare);
+                                _mint(feeTo, lpFees - creatorShare);
                                 return true;
                             }
                         } catch {}
 
-                        // For non-LaunchTokens, protocol gets full 0.3%
-                        _mint(feeTo, liquidity);
+                        _mint(feeTo, lpFees);
                     }
                 }
             }
@@ -174,6 +185,51 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
             kLast = 0;
         }
         return feeOn;
+    }
+    function _handleStakingFees(uint256 stakingFees, uint112 _reserve0, uint112 _reserve1) private {
+        // Mint LP tokens to this contract
+        _mint(address(this), stakingFees);
+
+        // Calculate token amounts based on reserves
+        uint256 amount0 = (stakingFees * uint256(_reserve0)) / totalSupply();
+        uint256 amount1 = (stakingFees * uint256(_reserve1)) / totalSupply();
+
+        // Approve router to spend our tokens
+        IERC20(token0).approve(address(router), amount0);
+        IERC20(token1).approve(address(router), amount1);
+
+        // Convert to stablecoin using optimal path
+        address[] memory path0 = new address[](2);
+        path0[0] = token0;
+        path0[1] = stablecoin;
+
+        address[] memory path1 = new address[](2);
+        path1[0] = token1;
+        path1[1] = stablecoin;
+
+        // Swap both tokens to stablecoin
+        if (amount0 > 0) {
+            router.swapExactTokensForTokens(
+                amount0,
+                0, // Accept any amount of stablecoin
+                path0,
+                IPonderFactory(factory).stakingContract(),
+                block.timestamp
+            );
+        }
+
+        if (amount1 > 0) {
+            router.swapExactTokensForTokens(
+                amount1,
+                0, // Accept any amount of stablecoin
+                path1,
+                IPonderFactory(factory).stakingContract(),
+                block.timestamp
+            );
+        }
+
+        // Burn the LP tokens after conversion
+        _burn(address(this), stakingFees);
     }
 
     function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external lock {

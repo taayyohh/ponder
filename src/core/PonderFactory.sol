@@ -9,6 +9,11 @@ contract PonderFactory is IPonderFactory {
     address public feeToSetter;
     address public migrator;
     address public launcher;
+    address public stakingContract;
+
+    // Immutable addresses needed for pair creation
+    address public immutable stablecoin;
+    address public immutable router;
 
     mapping(address => mapping(address => address)) public getPair;
     address[] public allPairs;
@@ -18,11 +23,22 @@ contract PonderFactory is IPonderFactory {
     error PairExists();
     error Forbidden();
 
-    bytes32 public constant INIT_CODE_PAIR_HASH = 0x9a82a765b06911e379e72a0467b97d0657af167aeed3ae61444d80bc20437055;
+    bytes32 public constant INIT_CODE_PAIR_HASH = keccak256(type(PonderPair).creationCode);
 
-    constructor(address _feeToSetter, address _launcher) {
+    constructor(
+        address _feeToSetter,
+        address _launcher,
+        address _stablecoin,
+        address _router
+    ) {
+        if (_feeToSetter == address(0)) revert ZeroAddress();
+        if (_stablecoin == address(0)) revert ZeroAddress();
+        if (_router == address(0)) revert ZeroAddress();
+
         feeToSetter = _feeToSetter;
         launcher = _launcher;
+        stablecoin = _stablecoin;
+        router = _router;
     }
 
     function allPairsLength() external view returns (uint256) {
@@ -35,7 +51,7 @@ contract PonderFactory is IPonderFactory {
         if (token0 == address(0)) revert ZeroAddress();
         if (getPair[token0][token1] != address(0)) revert PairExists();
 
-        // Create the pair
+        // Create the pair with stablecoin and router addresses
         bytes memory bytecode = type(PonderPair).creationCode;
         bytes32 salt = keccak256(abi.encodePacked(token0, token1));
         assembly {
@@ -71,5 +87,12 @@ contract PonderFactory is IPonderFactory {
         address oldLauncher = launcher;
         launcher = _launcher;
         emit LauncherUpdated(oldLauncher, _launcher);
+    }
+
+    function setStakingContract(address _stakingContract) external {
+        if (msg.sender != feeToSetter) revert Forbidden();
+        address oldStaking = stakingContract;
+        stakingContract = _stakingContract;
+        emit StakingContractUpdated(oldStaking, _stakingContract);
     }
 }

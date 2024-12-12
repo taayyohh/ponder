@@ -45,7 +45,7 @@ contract FiveFiveFiveLauncherTest is Test {
 
         // Deploy core contracts
         weth = new WETH9();
-        factory = new PonderFactory(address(this), address(this));
+        factory = new PonderFactory(address(this), address(this), address(2), address(3));
         ponder = new PonderToken(treasury, teamReserve, marketing, address(this));
 
         // Create PONDER/WETH pair
