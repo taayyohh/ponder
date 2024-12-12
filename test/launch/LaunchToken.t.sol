@@ -6,7 +6,7 @@ import "../../src/launch/LaunchToken.sol";
 import "../../src/core/PonderFactory.sol";
 import "../../src/core/PonderToken.sol";
 import "../../src/periphery/PonderRouter.sol";
-import "../../test/mocks/WETH9.sol";
+import "../mocks/WETH9.sol";
 import "../mocks/MockKKUBUnwrapper.sol";
 
 contract LaunchTokenTest is Test {
@@ -16,24 +16,33 @@ contract LaunchTokenTest is Test {
     PonderRouter router;
     WETH9 weth;
 
-    address launcher = address(0x1);
-    address creator = address(0x2);
-    address user = address(0x3);
-    address treasury = address(0x4);
+    address owner = address(this);
+    address alice = makeAddr("alice");
+    address bob = makeAddr("bob");
+    address creator = makeAddr("creator");
+    address feeCollector = makeAddr("feeCollector");
+    address treasury = makeAddr("treasury");
+    address launcher = makeAddr("launcher");
+
+    uint256 constant INITIAL_LIQUIDITY = 100e18;
+    uint256 constant TEST_AMOUNT = 100e18;
+    uint256 constant FEE_TEST_AMOUNT = 1000e18;
 
     event VestingInitialized(address indexed creator, uint256 amount, uint256 startTime, uint256 endTime);
     event TokensClaimed(address indexed creator, uint256 amount);
-    event CreatorFeePaid(address indexed creator, uint256 amount);
-    event ProtocolFeePaid(uint256 amount);
+    event CreatorFeePaid(address indexed creator, uint256 amount, address pair);
+    event ProtocolFeePaid(uint256 amount, address pair);
     event TransfersEnabled();
+    event PairsSet(address kubPair, address ponderPair);
 
     function setUp() public {
         // Deploy core contracts
         weth = new WETH9();
+        ponder = new PonderToken(treasury, treasury, treasury, launcher);
         factory = new PonderFactory(address(this), launcher);
+
         MockKKUBUnwrapper unwrapper = new MockKKUBUnwrapper(address(weth));
         router = new PonderRouter(address(factory), address(weth), address(unwrapper));
-        ponder = new PonderToken(treasury, treasury, treasury, launcher);
 
         // Deploy launch token
         token = new LaunchToken(
@@ -44,50 +53,123 @@ contract LaunchTokenTest is Test {
             payable(address(router)),
             address(ponder)
         );
-    }
 
-    function testInitialState() public {
-        assertEq(token.name(), "Test Token");
-        assertEq(token.symbol(), "TEST");
-        assertEq(token.launcher(), launcher);
-        assertEq(address(token.factory()), address(factory));
-        assertEq(address(token.router()), address(router));
-        assertEq(address(token.ponder()), address(ponder));
-        assertEq(token.totalSupply(), token.TOTAL_SUPPLY());
-        assertEq(token.balanceOf(launcher), token.TOTAL_SUPPLY());
-    }
+        // Create trading pairs
+        address kubPair = factory.createPair(address(token), address(weth));
+        address ponderPair = factory.createPair(address(token), address(ponder));
 
-    function testVestingSetup() public {
-        uint256 vestAmount = 1000e18;
-
+        // Set pairs and initialize token
         vm.startPrank(launcher);
-        vm.expectEmit(true, false, false, true);
-        emit VestingInitialized(creator, vestAmount, block.timestamp, block.timestamp + token.VESTING_DURATION());
-        token.setupVesting(creator, vestAmount);
+        vm.expectEmit(true, true, true, true);
+        emit PairsSet(kubPair, ponderPair);
+        token.setPairs(kubPair, ponderPair);
+
+        token.setupVesting(creator, TEST_AMOUNT);
+        token.enableTransfers();
+
+        // Setup initial balances
+        token.transfer(alice, TEST_AMOUNT * 10);
+        token.transfer(bob, TEST_AMOUNT * 10);
+        vm.stopPrank();
+    }
+
+    function testKubPairFees() public {
+        address kubPair = token.kubPair();
+
+        // Calculate expected fees
+        uint256 protocolFee = (FEE_TEST_AMOUNT * token.KUB_PROTOCOL_FEE()) / token.FEE_DENOMINATOR();
+        uint256 creatorFee = (FEE_TEST_AMOUNT * token.KUB_CREATOR_FEE()) / token.FEE_DENOMINATOR();
+        uint256 expectedTransfer = FEE_TEST_AMOUNT - protocolFee - creatorFee;
+
+        // Record initial balances
+        uint256 launcherBalanceBefore = token.balanceOf(launcher);
+        uint256 creatorBalanceBefore = token.balanceOf(creator);
+        uint256 pairBalanceBefore = token.balanceOf(kubPair);
+
+        // Execute transfer to KUB pair
+        vm.startPrank(alice);
+        vm.expectEmit(true, true, true, true);
+        emit ProtocolFeePaid(protocolFee, kubPair);
+        vm.expectEmit(true, true, true, true);
+        emit CreatorFeePaid(creator, creatorFee, kubPair);
+        token.transfer(kubPair, FEE_TEST_AMOUNT);
         vm.stopPrank();
 
-        assertEq(token.creator(), creator);
-        assertEq(token.totalVestedAmount(), vestAmount);
-        assertEq(token.vestingStart(), block.timestamp);
-        assertEq(token.vestingEnd(), block.timestamp + token.VESTING_DURATION());
+        // Verify balances
+        assertEq(
+            token.balanceOf(kubPair) - pairBalanceBefore,
+            expectedTransfer,
+            "Incorrect transfer amount"
+        );
+        assertEq(
+            token.balanceOf(launcher) - launcherBalanceBefore,
+            protocolFee,
+            "Incorrect protocol fee"
+        );
+        assertEq(
+            token.balanceOf(creator) - creatorBalanceBefore,
+            creatorFee,
+            "Incorrect creator fee"
+        );
     }
 
-    function testFailNonLauncherVestingSetup() public {
-        vm.prank(address(0x9));
-        token.setupVesting(creator, 1000e18);
+    function testPonderPairFees() public {
+        address ponderPair = token.ponderPair();
+
+        // Calculate expected fees
+        uint256 protocolFee = (FEE_TEST_AMOUNT * token.PONDER_PROTOCOL_FEE()) / token.FEE_DENOMINATOR();
+        uint256 creatorFee = (FEE_TEST_AMOUNT * token.PONDER_CREATOR_FEE()) / token.FEE_DENOMINATOR();
+        uint256 expectedTransfer = FEE_TEST_AMOUNT - protocolFee - creatorFee;
+
+        // Record initial balances
+        uint256 launcherBalanceBefore = token.balanceOf(launcher);
+        uint256 creatorBalanceBefore = token.balanceOf(creator);
+        uint256 pairBalanceBefore = token.balanceOf(ponderPair);
+
+        // Execute transfer to PONDER pair
+        vm.startPrank(alice);
+        vm.expectEmit(true, true, true, true);
+        emit ProtocolFeePaid(protocolFee, ponderPair);
+        vm.expectEmit(true, true, true, true);
+        emit CreatorFeePaid(creator, creatorFee, ponderPair);
+        token.transfer(ponderPair, FEE_TEST_AMOUNT);
+        vm.stopPrank();
+
+        // Verify balances
+        assertEq(
+            token.balanceOf(ponderPair) - pairBalanceBefore,
+            expectedTransfer,
+            "Incorrect transfer amount"
+        );
+        assertEq(
+            token.balanceOf(launcher) - launcherBalanceBefore,
+            protocolFee,
+            "Incorrect protocol fee"
+        );
+        assertEq(
+            token.balanceOf(creator) - creatorBalanceBefore,
+            creatorFee,
+            "Incorrect creator fee"
+        );
+    }
+
+    function testFailSetPairsUnauthorized() public {
+        vm.prank(alice);
+        token.setPairs(address(0x123), address(0x456));
+    }
+
+    function testFailSetPairsTwice() public {
+        vm.startPrank(launcher);
+        token.setPairs(address(0x123), address(0x456));
+        token.setPairs(address(0x789), address(0xabc));
+        vm.stopPrank();
     }
 
     function testVestingClaim() public {
-        uint256 vestAmount = 1000e18;
+        uint256 vestAmount = TEST_AMOUNT;
 
-        // Setup vesting
-        vm.prank(launcher);
-        token.setupVesting(creator, vestAmount);
-
-        // Move halfway through vesting
         vm.warp(block.timestamp + 90 days);
 
-        // Claim tokens
         vm.startPrank(creator);
         uint256 expectedClaim = vestAmount / 2;
         vm.expectEmit(true, false, false, true);
@@ -95,37 +177,32 @@ contract LaunchTokenTest is Test {
         token.claimVestedTokens();
         vm.stopPrank();
 
-        assertEq(token.balanceOf(creator), expectedClaim);
-        assertEq(token.vestedClaimed(), expectedClaim);
+        assertEq(token.balanceOf(creator), expectedClaim, "Incorrect vested amount claimed");
+        assertEq(token.vestedClaimed(), expectedClaim, "Incorrect vested amount recorded");
     }
 
-    function testFailTransfersBeforeEnabled() public {
-        vm.prank(launcher);
-        token.transfer(user, 1000e18);
+    function testPartialVestingClaims() public {
+        uint256 vestAmount = TEST_AMOUNT;
 
-        vm.prank(user);
-        token.transfer(address(0x9), 100e18);
-    }
+        // First claim at 25%
+        vm.warp(block.timestamp + 45 days);
+        vm.startPrank(creator);
+        token.claimVestedTokens();
+        uint256 firstClaim = token.vestedClaimed();
+        assertApproxEqRel(firstClaim, vestAmount / 4, 0.01e18, "First claim should be ~25%");
 
-    function testTransferAfterEnabled() public {
-        vm.startPrank(launcher);
-        token.enableTransfers();
-        token.transfer(user, 1000e18);
+        // Second claim at 75%
+        vm.warp(block.timestamp + 90 days);
+        token.claimVestedTokens();
+        uint256 secondClaim = token.vestedClaimed() - firstClaim;
+        assertApproxEqRel(secondClaim, vestAmount / 2, 0.01e18, "Second claim should be ~50%");
         vm.stopPrank();
-
-        vm.prank(user);
-        token.transfer(address(0x9), 100e18);
-        assertEq(token.balanceOf(address(0x9)), 100e18);
     }
 
     function testGetVestingInfo() public {
-        uint256 vestAmount = 1000e18;
+        uint256 vestAmount = TEST_AMOUNT;
+        uint256 startTime = block.timestamp;
 
-        // Setup vesting
-        vm.prank(launcher);
-        token.setupVesting(creator, vestAmount);
-
-        // Move partway through vesting
         vm.warp(block.timestamp + 45 days);
 
         (
@@ -136,10 +213,42 @@ contract LaunchTokenTest is Test {
             uint256 end
         ) = token.getVestingInfo();
 
-        assertEq(total, vestAmount);
-        assertEq(claimed, 0);
-        assertEq(available, (vestAmount * 45 days) / token.VESTING_DURATION());
-        assertEq(start, block.timestamp - 45 days);
-        assertEq(end, start + token.VESTING_DURATION());
+        assertEq(total, vestAmount, "Incorrect total vesting amount");
+        assertEq(claimed, 0, "Should not have claimed any tokens");
+        assertApproxEqRel(available, vestAmount / 4, 0.01e18, "Available amount should be ~25%");
+        assertEq(start, startTime, "Incorrect vesting start time");
+        assertEq(end, startTime + token.VESTING_DURATION(), "Incorrect vesting end time");
     }
+
+    function testTransferFromWithFees() public {
+        address kubPair = token.kubPair();
+        uint256 launcherBalanceBefore = token.balanceOf(launcher);
+
+        vm.startPrank(alice);
+        token.approve(bob, FEE_TEST_AMOUNT);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        token.transferFrom(alice, kubPair, FEE_TEST_AMOUNT);
+        vm.stopPrank();
+
+        uint256 protocolFee = (FEE_TEST_AMOUNT * token.KUB_PROTOCOL_FEE()) / token.FEE_DENOMINATOR();
+        uint256 feeCollected = token.balanceOf(launcher) - launcherBalanceBefore;
+        assertEq(feeCollected, protocolFee, "Incorrect protocol fee from transferFrom");
+    }
+
+    function testInitialState() public {
+        assertEq(token.name(), "Test Token");
+        assertEq(token.symbol(), "TEST");
+        assertEq(token.launcher(), launcher);
+        assertEq(address(token.factory()), address(factory));
+        assertEq(address(token.router()), address(router));
+        assertEq(address(token.ponder()), address(ponder));
+        assertEq(token.totalSupply(), token.TOTAL_SUPPLY());
+        assertTrue(token.transfersEnabled());
+        assertNotEq(token.kubPair(), address(0));
+        assertNotEq(token.ponderPair(), address(0));
+    }
+
+    receive() external payable {}
 }

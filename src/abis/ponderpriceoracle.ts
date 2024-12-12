@@ -8,7 +8,12 @@ export const ponderpriceoracleAbi = [
         "internalType": "address"
       },
       {
-        "name": "_ponderKubPair",
+        "name": "_baseToken",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_stablecoin",
         "type": "address",
         "internalType": "address"
       }
@@ -17,13 +22,26 @@ export const ponderpriceoracleAbi = [
   },
   {
     "type": "function",
-    "name": "MIN_UPDATE_INTERVAL",
+    "name": "MIN_UPDATE_DELAY",
     "inputs": [],
     "outputs": [
       {
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "OBSERVATION_CARDINALITY",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
       }
     ],
     "stateMutability": "view"
@@ -37,6 +55,19 @@ export const ponderpriceoracleAbi = [
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "baseToken",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -61,7 +92,7 @@ export const ponderpriceoracleAbi = [
         "internalType": "uint256"
       },
       {
-        "name": "periodInSeconds",
+        "name": "period",
         "type": "uint32",
         "internalType": "uint32"
       }
@@ -69,6 +100,25 @@ export const ponderpriceoracleAbi = [
     "outputs": [
       {
         "name": "amountOut",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "currentIndex",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -90,27 +140,27 @@ export const ponderpriceoracleAbi = [
   },
   {
     "type": "function",
-    "name": "getLatestPrice",
+    "name": "getCurrentPrice",
     "inputs": [
       {
         "name": "pair",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "tokenIn",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amountIn",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [
       {
-        "name": "price0Average",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "price1Average",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "timestamp",
+        "name": "amountOut",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -119,17 +169,27 @@ export const ponderpriceoracleAbi = [
   },
   {
     "type": "function",
-    "name": "getPonderKubPrice",
+    "name": "getPriceInStablecoin",
     "inputs": [
       {
-        "name": "periodInSeconds",
-        "type": "uint32",
-        "internalType": "uint32"
+        "name": "pair",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "tokenIn",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amountIn",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [
       {
-        "name": "",
+        "name": "amountOut",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -192,35 +252,25 @@ export const ponderpriceoracleAbi = [
     "outputs": [
       {
         "name": "timestamp",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint32",
+        "internalType": "uint32"
       },
       {
         "name": "price0Cumulative",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint224",
+        "internalType": "uint224"
       },
       {
         "name": "price1Cumulative",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "price0Average",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "price1Average",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint224",
+        "internalType": "uint224"
       }
     ],
     "stateMutability": "view"
   },
   {
     "type": "function",
-    "name": "ponderKubPair",
+    "name": "stablecoin",
     "inputs": [],
     "outputs": [
       {
@@ -246,7 +296,7 @@ export const ponderpriceoracleAbi = [
   },
   {
     "type": "event",
-    "name": "PriceUpdated",
+    "name": "OracleUpdated",
     "inputs": [
       {
         "name": "pair",
@@ -255,29 +305,29 @@ export const ponderpriceoracleAbi = [
         "internalType": "address"
       },
       {
-        "name": "price0Average",
+        "name": "price0Cumulative",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
       },
       {
-        "name": "price1Average",
+        "name": "price1Cumulative",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
       },
       {
-        "name": "timestamp",
-        "type": "uint256",
+        "name": "blockTimestamp",
+        "type": "uint32",
         "indexed": false,
-        "internalType": "uint256"
+        "internalType": "uint32"
       }
     ],
     "anonymous": false
   },
   {
     "type": "error",
-    "name": "InsufficientHistory",
+    "name": "InsufficientData",
     "inputs": []
   },
   {

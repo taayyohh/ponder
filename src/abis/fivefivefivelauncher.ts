@@ -36,7 +36,7 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "function",
-    "name": "CONTRIBUTOR_ALLOCATION",
+    "name": "BASIS_POINTS",
     "inputs": [],
     "outputs": [
       {
@@ -49,7 +49,7 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "function",
-    "name": "CREATOR_ALLOCATION",
+    "name": "KUB_TO_MEME_KUB_LP",
     "inputs": [],
     "outputs": [
       {
@@ -62,7 +62,20 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "function",
-    "name": "LP_ALLOCATION",
+    "name": "KUB_TO_MEME_PONDER_LP",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "KUB_TO_PONDER_KUB_LP",
     "inputs": [],
     "outputs": [
       {
@@ -88,7 +101,7 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "function",
-    "name": "MAX_PRICE_IMPACT",
+    "name": "PONDER_TO_BURN",
     "inputs": [],
     "outputs": [
       {
@@ -101,7 +114,7 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "function",
-    "name": "PONDER_BURN",
+    "name": "PONDER_TO_MEME_PONDER",
     "inputs": [],
     "outputs": [
       {
@@ -114,33 +127,7 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "function",
-    "name": "PONDER_LP_ALLOCATION",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "PONDER_PROTOCOL_LP",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "PRICE_DENOMINATOR",
+    "name": "PRICE_STALENESS_THRESHOLD",
     "inputs": [],
     "outputs": [
       {
@@ -166,20 +153,20 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "function",
-    "name": "TOTAL_SUPPLY",
-    "inputs": [],
-    "outputs": [
+    "name": "contributeKUB",
+    "inputs": [
       {
-        "name": "",
+        "name": "launchId",
         "type": "uint256",
         "internalType": "uint256"
       }
     ],
-    "stateMutability": "view"
+    "outputs": [],
+    "stateMutability": "payable"
   },
   {
     "type": "function",
-    "name": "contribute",
+    "name": "contributePONDER",
     "inputs": [
       {
         "name": "launchId",
@@ -252,6 +239,40 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "function",
+    "name": "getContributionInfo",
+    "inputs": [
+      {
+        "name": "launchId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "kubCollected",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "ponderCollected",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "ponderValueCollected",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "totalValue",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getLaunchInfo",
     "inputs": [
       {
@@ -282,7 +303,7 @@ export const fivefivefivelauncherAbi = [
         "internalType": "string"
       },
       {
-        "name": "totalRaised",
+        "name": "kubRaised",
         "type": "uint256",
         "internalType": "uint256"
       },
@@ -301,7 +322,7 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "function",
-    "name": "getSaleInfo",
+    "name": "getPoolInfo",
     "inputs": [
       {
         "name": "launchId",
@@ -311,34 +332,19 @@ export const fivefivefivelauncherAbi = [
     ],
     "outputs": [
       {
-        "name": "tokenPrice",
-        "type": "uint256",
-        "internalType": "uint256"
+        "name": "memeKubPair",
+        "type": "address",
+        "internalType": "address"
       },
       {
-        "name": "tokensForSale",
-        "type": "uint256",
-        "internalType": "uint256"
+        "name": "memePonderPair",
+        "type": "address",
+        "internalType": "address"
       },
       {
-        "name": "tokensSold",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "totalRaised",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "launched",
+        "name": "hasSecondaryPool",
         "type": "bool",
         "internalType": "bool"
-      },
-      {
-        "name": "remainingTokens",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -388,11 +394,6 @@ export const fivefivefivelauncherAbi = [
         "internalType": "string"
       },
       {
-        "name": "totalRaised",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
         "name": "launched",
         "type": "bool",
         "internalType": "bool"
@@ -408,22 +409,7 @@ export const fivefivefivelauncherAbi = [
         "internalType": "uint256"
       },
       {
-        "name": "tokenPrice",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "tokensForSale",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "tokensSold",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "ponderRequired",
+        "name": "kubCollected",
         "type": "uint256",
         "internalType": "uint256"
       },
@@ -431,6 +417,21 @@ export const fivefivefivelauncherAbi = [
         "name": "ponderCollected",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "ponderValueCollected",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "memeKubPair",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "memePonderPair",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -457,30 +458,6 @@ export const fivefivefivelauncherAbi = [
         "name": "",
         "type": "address",
         "internalType": "contract PonderToken"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "priceInfo",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "initialPonderRequired",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "lastPriceUpdate",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -526,7 +503,44 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "event",
-    "name": "Contributed",
+    "name": "DualPoolsCreated",
+    "inputs": [
+      {
+        "name": "launchId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "memeKubPair",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "memePonderPair",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "kubLiquidity",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "ponderLiquidity",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "KUBContributed",
     "inputs": [
       {
         "name": "launchId",
@@ -537,32 +551,7 @@ export const fivefivefivelauncherAbi = [
       {
         "name": "contributor",
         "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
         "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "CreatorFeePaid",
-    "inputs": [
-      {
-        "name": "launchId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "creator",
-        "type": "address",
-        "indexed": true,
         "internalType": "address"
       },
       {
@@ -610,13 +599,13 @@ export const fivefivefivelauncherAbi = [
         "internalType": "uint256"
       },
       {
-        "name": "totalRaised",
+        "name": "kubRaised",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
       },
       {
-        "name": "totalSold",
+        "name": "ponderRaised",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -657,62 +646,6 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "event",
-    "name": "LaunchFinalized",
-    "inputs": [
-      {
-        "name": "launchId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "lpAmount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "creatorFee",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "protocolFee",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "LiquidityAdded",
-    "inputs": [
-      {
-        "name": "launchId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "ethAmount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "tokenAmount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "PonderBurned",
     "inputs": [
       {
@@ -722,7 +655,7 @@ export const fivefivefivelauncherAbi = [
         "internalType": "uint256"
       },
       {
-        "name": "burnAmount",
+        "name": "amount",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -743,7 +676,7 @@ export const fivefivefivelauncherAbi = [
       {
         "name": "contributor",
         "type": "address",
-        "indexed": true,
+        "indexed": false,
         "internalType": "address"
       },
       {
@@ -751,100 +684,12 @@ export const fivefivefivelauncherAbi = [
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "ProtocolFeePaid",
-    "inputs": [
-      {
-        "name": "launchId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
       },
       {
-        "name": "amount",
+        "name": "kubValue",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "TokenMinted",
-    "inputs": [
-      {
-        "name": "launchId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "tokenAddress",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "TokenPurchased",
-    "inputs": [
-      {
-        "name": "launchId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "buyer",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "ponderAmount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "tokenAmount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "TransfersEnabled",
-    "inputs": [
-      {
-        "name": "launchId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "tokenAddress",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
       }
     ],
     "anonymous": false
@@ -856,12 +701,12 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "error",
-    "name": "ImageRequired",
+    "name": "ExcessiveContribution",
     "inputs": []
   },
   {
     "type": "error",
-    "name": "InsufficientPonder",
+    "name": "ImageRequired",
     "inputs": []
   },
   {
@@ -891,17 +736,7 @@ export const fivefivefivelauncherAbi = [
   },
   {
     "type": "error",
-    "name": "PriceImpactTooHigh",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "PriceOracleError",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "SoldOut",
+    "name": "StalePrice",
     "inputs": []
   },
   {

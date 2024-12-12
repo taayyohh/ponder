@@ -15,6 +15,10 @@ contract DeployBitkubScript is Script {
     // This equals approximately 3.168 PONDER per second (400M / (4 * 365 * 24 * 60 * 60))
     uint256 constant PONDER_PER_SECOND = 3168000000000000000; // 3.168 ether
 
+    address constant USDT = 0x7d984C24d2499D840eB3b7016077164e15E5faA6;
+    // testnet - 0xBa71efd94be63bD47B78eF458DE982fE29f552f7
+    // mainnet - 0x7d984C24d2499D840eB3b7016077164e15E5faA6
+
     address constant KKUB = 0xBa71efd94be63bD47B78eF458DE982fE29f552f7;
     // testnet - 0xBa71efd94be63bD47B78eF458DE982fE29f552f7
     // mainnet - 0x67eBD850304c70d983B2d1b93ea79c7CD6c3F6b5
@@ -139,7 +143,8 @@ contract DeployBitkubScript is Script {
         // 4. Deploy oracle
         PonderPriceOracle oracle = new PonderPriceOracle(
             address(factory),
-            ponderKubPair
+                ponderKubPair,
+        address(USDT)
         );
         _verifyContract("PonderPriceOracle", address(oracle));
 

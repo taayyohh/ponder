@@ -37,19 +37,6 @@ export const launchtokenAbi = [
   },
   {
     "type": "function",
-    "name": "CREATOR_FEE",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "DOMAIN_SEPARATOR",
     "inputs": [],
     "outputs": [
@@ -76,6 +63,32 @@ export const launchtokenAbi = [
   },
   {
     "type": "function",
+    "name": "KUB_CREATOR_FEE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "KUB_PROTOCOL_FEE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "PERMIT_TYPEHASH",
     "inputs": [],
     "outputs": [
@@ -89,7 +102,20 @@ export const launchtokenAbi = [
   },
   {
     "type": "function",
-    "name": "PROTOCOL_FEE",
+    "name": "PONDER_CREATOR_FEE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PONDER_PROTOCOL_FEE",
     "inputs": [],
     "outputs": [
       {
@@ -281,6 +307,19 @@ export const launchtokenAbi = [
   },
   {
     "type": "function",
+    "name": "kubPair",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "launcher",
     "inputs": [],
     "outputs": [
@@ -382,6 +421,19 @@ export const launchtokenAbi = [
   },
   {
     "type": "function",
+    "name": "ponderPair",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "router",
     "inputs": [],
     "outputs": [
@@ -392,6 +444,24 @@ export const launchtokenAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setPairs",
+    "inputs": [
+      {
+        "name": "_kubPair",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_ponderPair",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -595,6 +665,31 @@ export const launchtokenAbi = [
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      },
+      {
+        "name": "pair",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "PairsSet",
+    "inputs": [
+      {
+        "name": "kubPair",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "ponderPair",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
       }
     ],
     "anonymous": false
@@ -608,6 +703,12 @@ export const launchtokenAbi = [
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      },
+      {
+        "name": "pair",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
       }
     ],
     "anonymous": false
@@ -706,6 +807,11 @@ export const launchtokenAbi = [
   {
     "type": "error",
     "name": "NoTokensAvailable",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "PairAlreadySet",
     "inputs": []
   },
   {

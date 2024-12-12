@@ -178,7 +178,7 @@ contract PonderToken is PonderERC20 {
 
     // @notice burn function that only launcher can call
     function burn(uint256 amount) external {
-        if (msg.sender != launcher && msg.sender != owner) revert OnlyLauncherOrOwner();
+        require(balanceOf(msg.sender) >= amount, "ERC20: burn amount exceeds balance");
         _burn(msg.sender, amount);
         totalBurned += amount;
     }
