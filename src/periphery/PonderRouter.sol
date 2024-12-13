@@ -254,7 +254,9 @@ contract PonderRouter {
             (uint256 amount0Out, uint256 amount1Out) = input == token0
                 ? (uint256(0), amountOut)
                 : (amountOut, uint256(0));
-            address to = i < path.length - 2 ? factory.getPair(output, path[i + 2]) : _to;
+            // For the final swap to WETH, ensure it comes to the router
+            address to = i < path.length - 2 ? factory.getPair(output, path[i + 2]) :
+                (output == WETH ? address(this) : _to);
             IPonderPair(factory.getPair(input, output)).swap(amount0Out, amount1Out, to, new bytes(0));
         }
     }
@@ -357,7 +359,13 @@ contract PonderRouter {
         TransferHelper.safeTransferFrom(path[0], msg.sender, factory.getPair(path[0], path[1]), amounts[0]);
         _swap(amounts, path, address(this));
         uint256 amountOut = amounts[amounts.length - 1];
-        IERC20(WETH).approve(kkubUnwrapper, amountOut);
+
+        // Add balance check
+        uint256 wethBalance = IERC20(WETH).balanceOf(address(this));
+        require(wethBalance >= amountOut, "Insufficient WETH balance");
+
+        // Approve and unwrap
+        require(IERC20(WETH).approve(kkubUnwrapper, amountOut), "WETH approval failed");
         KKUBUnwrapper(kkubUnwrapper).unwrapKKUB(amountOut, to);
     }
 

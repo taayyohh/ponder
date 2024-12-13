@@ -42,12 +42,12 @@ contract PonderRouterTest is Test {
         tokenB = new ERC20Mint("Token B", "TKNB");
         tokenC = new ERC20Mint("Token C", "TKNC");
 
-        // Setup initial balances
+        // Setup initial balances - Increase ETH balance to 200 ETH to ensure enough for all operations
         vm.startPrank(alice);
         tokenA.mint(alice, 1000e18);
         tokenB.mint(alice, 1000e18);
         tokenC.mint(alice, 1000e18);
-        vm.deal(alice, 100 ether);
+        vm.deal(alice, 200 ether);  // Increased from 100 to 200 ETH
         vm.stopPrank();
     }
 
@@ -210,5 +210,196 @@ contract PonderRouterTest is Test {
         assertLt(amounts[0], maxInput, "Input exceeds maximum");
         assertEq(amounts[0], expectedAmounts[0], "Input different from expected");
         assertEq(balanceAfter - balanceBefore, outputDesired, "Incorrect token B balance change");
+    }
+
+    function testSwapExactETHForTokens() public {
+        vm.startPrank(alice);
+
+        // Add initial liquidity to WETH/TokenA pair
+        tokenA.approve(address(router), INITIAL_LIQUIDITY);
+        router.addLiquidityETH{value: INITIAL_LIQUIDITY}(
+            address(tokenA),
+            INITIAL_LIQUIDITY,
+            0,
+            0,
+            alice,
+            deadline
+        );
+
+        // Setup swap parameters
+        address[] memory path = new address[](2);
+        path[0] = address(weth);
+        path[1] = address(tokenA);
+
+        // Calculate expected amounts
+        uint256[] memory expectedAmounts = router.getAmountsOut(SWAP_AMOUNT, path);
+        uint256 balanceBefore = tokenA.balanceOf(alice);
+
+        // Execute swap - ensure we have enough ETH
+        uint256 ethBalanceBefore = alice.balance;
+        require(ethBalanceBefore >= SWAP_AMOUNT, "Insufficient ETH for test");
+
+        uint256[] memory amounts = router.swapExactETHForTokens{value: SWAP_AMOUNT}(
+            expectedAmounts[1],
+            path,
+            alice,
+            deadline
+        );
+
+        uint256 balanceAfter = tokenA.balanceOf(alice);
+
+        vm.stopPrank();
+
+        // Verify results
+        assertEq(amounts[0], SWAP_AMOUNT, "Incorrect input amount");
+        assertEq(amounts[1], expectedAmounts[1], "Output different from expected");
+        assertEq(balanceAfter - balanceBefore, amounts[1], "Incorrect token balance change");
+    }
+
+    function testSwapETHForExactTokens() public {
+        vm.startPrank(alice);
+
+        // Add initial liquidity to WETH/TokenA pair
+        tokenA.approve(address(router), INITIAL_LIQUIDITY);
+        router.addLiquidityETH{value: INITIAL_LIQUIDITY}(
+            address(tokenA),
+            INITIAL_LIQUIDITY,
+            0,
+            0,
+            alice,
+            deadline
+        );
+
+        // Setup swap parameters
+        uint256 outputDesired = 0.1e18;
+        address[] memory path = new address[](2);
+        path[0] = address(weth);
+        path[1] = address(tokenA);
+
+        // Calculate required input amount
+        uint256[] memory expectedAmounts = router.getAmountsIn(outputDesired, path);
+        uint256 maxETH = 1 ether;
+
+        // Verify we have enough ETH for the swap
+        uint256 ethBalanceBefore = alice.balance;
+        require(ethBalanceBefore >= maxETH, "Insufficient ETH for test");
+
+        uint256 tokenBalanceBefore = tokenA.balanceOf(alice);
+
+        // Execute swap
+        uint256[] memory amounts = router.swapETHForExactTokens{value: maxETH}(
+            outputDesired,
+            path,
+            alice,
+            deadline
+        );
+
+        uint256 ethBalanceAfter = alice.balance;
+        uint256 tokenBalanceAfter = tokenA.balanceOf(alice);
+
+        vm.stopPrank();
+
+        // Verify results
+        assertEq(amounts[1], outputDesired, "Incorrect output amount");
+        assertLt(amounts[0], maxETH, "Input exceeds maximum");
+        assertEq(amounts[0], expectedAmounts[0], "Input different from expected");
+        assertEq(tokenBalanceAfter - tokenBalanceBefore, outputDesired, "Incorrect token balance change");
+        assertEq(ethBalanceBefore - ethBalanceAfter, amounts[0], "Incorrect ETH spent");
+    }
+
+    function testSwapExactTokensForETH() public {
+        vm.startPrank(alice);
+
+        // Add initial liquidity to WETH/TokenA pair
+        tokenA.approve(address(router), INITIAL_LIQUIDITY);
+        router.addLiquidityETH{value: INITIAL_LIQUIDITY}(
+            address(tokenA),
+            INITIAL_LIQUIDITY,
+            0,
+            0,
+            alice,
+            deadline
+        );
+
+        // Setup swap parameters
+        address[] memory path = new address[](2);
+        path[0] = address(tokenA);
+        path[1] = address(weth);
+
+        // Calculate expected amounts
+        uint256[] memory expectedAmounts = router.getAmountsOut(SWAP_AMOUNT, path);
+
+        // Approve tokens
+        tokenA.approve(address(router), SWAP_AMOUNT);
+        uint256 ethBalanceBefore = alice.balance;
+
+        // Execute swap
+        uint256[] memory amounts = router.swapExactTokensForETH(
+            SWAP_AMOUNT,
+            expectedAmounts[1], // Use expected amount as minimum output
+            path,
+            alice,
+            deadline
+        );
+
+        uint256 ethBalanceAfter = alice.balance;
+
+        vm.stopPrank();
+
+        // Verify results
+        assertEq(amounts[0], SWAP_AMOUNT, "Incorrect input amount");
+        assertEq(amounts[1], expectedAmounts[1], "Output different from expected");
+        assertEq(ethBalanceAfter - ethBalanceBefore, amounts[1], "Incorrect ETH received");
+    }
+
+    function testSwapTokensForExactETH() public {
+        vm.startPrank(alice);
+
+        // Add initial liquidity to WETH/TokenA pair
+        tokenA.approve(address(router), INITIAL_LIQUIDITY);
+        router.addLiquidityETH{value: INITIAL_LIQUIDITY}(
+            address(tokenA),
+            INITIAL_LIQUIDITY,
+            0,
+            0,
+            alice,
+            deadline
+        );
+
+        // Setup swap parameters
+        uint256 ethOutputDesired = 0.1 ether;
+        uint256 maxTokens = 1e18;
+        address[] memory path = new address[](2);
+        path[0] = address(tokenA);
+        path[1] = address(weth);
+
+        // Calculate expected amounts
+        uint256[] memory expectedAmounts = router.getAmountsIn(ethOutputDesired, path);
+
+        // Approve tokens
+        tokenA.approve(address(router), expectedAmounts[0]);
+        uint256 ethBalanceBefore = alice.balance;
+        uint256 tokenBalanceBefore = tokenA.balanceOf(alice);
+
+        // Execute swap
+        uint256[] memory amounts = router.swapTokensForExactETH(
+            ethOutputDesired,
+            maxTokens,
+            path,
+            alice,
+            deadline
+        );
+
+        uint256 ethBalanceAfter = alice.balance;
+        uint256 tokenBalanceAfter = tokenA.balanceOf(alice);
+
+        vm.stopPrank();
+
+        // Verify results
+        assertEq(amounts[1], ethOutputDesired, "Incorrect ETH output");
+        assertLt(amounts[0], maxTokens, "Input exceeds maximum");
+        assertEq(amounts[0], expectedAmounts[0], "Input different from expected");
+        assertEq(tokenBalanceBefore - tokenBalanceAfter, amounts[0], "Incorrect token spent");
+        assertEq(ethBalanceAfter - ethBalanceBefore, ethOutputDesired, "Incorrect ETH received");
     }
 }

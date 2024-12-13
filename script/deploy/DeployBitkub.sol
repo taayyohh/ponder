@@ -24,8 +24,8 @@ contract DeployBitkubScript is Script {
     // mainnet - 0x67eBD850304c70d983B2d1b93ea79c7CD6c3F6b5
 
     // Initial liquidity constants (PONDER = $0.0001, KUB = $2.80)
-    uint256 constant INITIAL_KUB_AMOUNT = 10 ether;                 // 10 KUB
-    uint256 constant INITIAL_PONDER_AMOUNT = 28_000 ether;       // 28K PONDER
+    uint256 constant INITIAL_KUB_AMOUNT = 1000 ether;                 // 1000 KUB
+    uint256 constant INITIAL_PONDER_AMOUNT = 28_000_000 ether;       // 28M PONDER
 
     error InvalidAddress();
     error PairCreationFailed();
