@@ -5,27 +5,20 @@ import "../../src/core/PonderFactory.sol";
 import "../../src/core/PonderMasterChef.sol";
 import "../../src/core/PonderPriceOracle.sol";
 import "../../src/core/PonderToken.sol";
+import "../../src/core/PonderStaking.sol";
 import "../../src/launch/FiveFiveFiveLauncher.sol";
 import "../../src/periphery/KKUBUnwrapper.sol";
 import "../../src/periphery/PonderRouter.sol";
 import "forge-std/Script.sol";
 
 contract DeployBitkubScript is Script {
-    // Total farming allocation is 400M PONDER over 4 years
-    // This equals approximately 3.168 PONDER per second (400M / (4 * 365 * 24 * 60 * 60))
     uint256 constant PONDER_PER_SECOND = 3168000000000000000; // 3.168 ether
 
-    address constant USDT = 0x7d984C24d2499D840eB3b7016077164e15E5faA6;
-    // testnet - 0xBa71efd94be63bD47B78eF458DE982fE29f552f7
-    // mainnet - 0x7d984C24d2499D840eB3b7016077164e15E5faA6
-
+    address constant USDT = 0x6Cb232F0A9a3aC508233D118ac644888102b40e5;
     address constant KKUB = 0xBa71efd94be63bD47B78eF458DE982fE29f552f7;
-    // testnet - 0xBa71efd94be63bD47B78eF458DE982fE29f552f7
-    // mainnet - 0x67eBD850304c70d983B2d1b93ea79c7CD6c3F6b5
 
-    // Initial liquidity constants (PONDER = $0.0001, KUB = $2.80)
-    uint256 constant INITIAL_KUB_AMOUNT = 10 ether;                 // 10 KUB
-    uint256 constant INITIAL_PONDER_AMOUNT = 28_000 ether;       // 28K PONDER
+    uint256 constant INITIAL_KUB_AMOUNT = 100 ether;
+    uint256 constant INITIAL_PONDER_AMOUNT = 2800000 ether;
 
     error InvalidAddress();
     error PairCreationFailed();
@@ -41,6 +34,7 @@ contract DeployBitkubScript is Script {
         address ponderKubPair;
         address masterChef;
         address launcher;
+        address staking;
     }
 
     function validateAddresses(
@@ -57,24 +51,84 @@ contract DeployBitkubScript is Script {
         }
     }
 
-    function setupInitialPrices(
-        PonderToken ponder,
-        PonderRouter router,
-        PonderPriceOracle oracle,
-        address ponderKubPair
-    ) internal {
-        console.log("Initial timestamp:", block.timestamp);
+    function deployContracts(
+        address deployer,
+        address treasury,
+        address teamReserve,
+        address marketing
+    ) internal returns (DeploymentAddresses memory addresses) {
+        // First deploy KKUBUnwrapper
+        addresses.kkubUnwrapper = address(new KKUBUnwrapper(KKUB));
+        _verifyContract("KKUBUnwrapper", addresses.kkubUnwrapper);
 
-        // Add liquidity
-        ponder.approve(address(router), INITIAL_PONDER_AMOUNT);
-        router.addLiquidityETH{value: INITIAL_KUB_AMOUNT}(
-            address(ponder),
-            INITIAL_PONDER_AMOUNT,
-            INITIAL_PONDER_AMOUNT,
-            INITIAL_KUB_AMOUNT,
-            address(this),
-            block.timestamp + 1 hours
-        );
+        // Deploy factory first since router needs it
+        addresses.factory = address(new PonderFactory(
+            deployer,
+            address(0), // launcher will be set later
+            USDT,
+            address(0) // router will be created next
+        ));
+        _verifyContract("PonderFactory", addresses.factory);
+
+        // Now deploy router with factory address
+        addresses.router = address(new PonderRouter(
+            addresses.factory,
+            KKUB,
+            addresses.kkubUnwrapper
+        ));
+        _verifyContract("PonderRouter", addresses.router);
+
+        addresses.ponder = address(new PonderToken(
+            treasury,
+            teamReserve,
+            marketing,
+            address(0) // launcher will be set later
+        ));
+        _verifyContract("PonderToken", addresses.ponder);
+
+        addresses.staking = address(new PonderStaking(
+            addresses.ponder,
+            USDT
+        ));
+        _verifyContract("PonderStaking", addresses.staking);
+
+        PonderFactory(addresses.factory).setStakingContract(addresses.staking);
+        console.log("Factory staking contract set to:", addresses.staking);
+
+        // Create PONDER/KKUB pair
+        PonderFactory(addresses.factory).createPair(addresses.ponder, KKUB);
+        addresses.ponderKubPair = PonderFactory(addresses.factory).getPair(addresses.ponder, KKUB);
+        if (addresses.ponderKubPair == address(0)) revert PairCreationFailed();
+
+        addresses.oracle = address(new PonderPriceOracle(
+            addresses.factory,
+            KKUB,
+            USDT
+        ));
+        _verifyContract("PonderPriceOracle", addresses.oracle);
+
+        addresses.launcher = address(new FiveFiveFiveLauncher(
+            addresses.factory,
+            payable(addresses.router),
+            treasury,
+            addresses.ponder,
+            addresses.oracle
+        ));
+        _verifyContract("Launcher", addresses.launcher);
+
+        PonderToken(addresses.ponder).setLauncher(addresses.launcher);
+        console.log("PONDER launcher set to:", addresses.launcher);
+
+        addresses.masterChef = address(new PonderMasterChef(
+            PonderToken(addresses.ponder),
+            PonderFactory(addresses.factory),
+            treasury,
+            PONDER_PER_SECOND,
+            block.timestamp
+        ));
+        _verifyContract("MasterChef", addresses.masterChef);
+
+        return addresses;
     }
 
     function run() external {
@@ -84,7 +138,6 @@ contract DeployBitkubScript is Script {
         address marketing = vm.envAddress("MARKETING_ADDRESS");
         address deployer = vm.addr(deployerPrivateKey);
 
-        // Validate addresses
         validateAddresses(treasury, teamReserve, marketing, deployer);
 
         vm.startBroadcast(deployerPrivateKey);
@@ -96,95 +149,40 @@ contract DeployBitkubScript is Script {
             marketing
         );
 
-        // Final configuration
         PonderToken(addresses.ponder).setMinter(addresses.masterChef);
         PonderFactory(addresses.factory).setLauncher(addresses.launcher);
-        console.log("Factory launcher set to:", addresses.launcher);
+
+        setupInitialPrices(
+            PonderToken(addresses.ponder),
+            addresses.router,
+            PonderPriceOracle(addresses.oracle),
+            addresses.ponderKubPair
+        );
 
         vm.stopBroadcast();
 
         logDeployment(addresses, treasury);
     }
 
-    function deployContracts(
-        address deployer,
-        address treasury,
-        address teamReserve,
-        address marketing
-    ) internal returns (DeploymentAddresses memory addresses) {
-        // 1. Deploy core factory and periphery
-        PonderFactory factory = new PonderFactory(deployer, address(0));
-        _verifyContract("PonderFactory", address(factory));
+    function setupInitialPrices(
+        PonderToken ponder,
+        address router,
+        PonderPriceOracle oracle,
+        address ponderKubPair
+    ) internal {
+        console.log("Initial timestamp:", block.timestamp);
 
-        KKUBUnwrapper kkubUnwrapper = new KKUBUnwrapper(KKUB);
-        _verifyContract("KKUBUnwrapper", address(kkubUnwrapper));
-
-        PonderRouter router = new PonderRouter(
-            address(factory),
-            KKUB,
-            address(kkubUnwrapper)
-        );
-        _verifyContract("PonderRouter", address(router));
-
-        // 2. Deploy PONDER with no launcher initially
-        PonderToken ponder = new PonderToken(
-            treasury,
-            teamReserve,
-            marketing,
-            address(0)  // No launcher initially
-        );
-        _verifyContract("PonderToken", address(ponder));
-
-        // 3. Create PONDER/KKUB pair
-        factory.createPair(address(ponder), KKUB);
-        address ponderKubPair = factory.getPair(address(ponder), KKUB);
-        if (ponderKubPair == address(0)) revert PairCreationFailed();
-
-        // 4. Deploy oracle
-        PonderPriceOracle oracle = new PonderPriceOracle(
-            address(factory),
-                ponderKubPair,
-        address(USDT)
-        );
-        _verifyContract("PonderPriceOracle", address(oracle));
-
-        // 5. Deploy launcher
-        FiveFiveFiveLauncher launcher = new FiveFiveFiveLauncher(
-            address(factory),
-            payable(address(router)),
-            treasury,
+        ponder.approve(router, INITIAL_PONDER_AMOUNT);
+        PonderRouter(payable(router)).addLiquidityETH{value: INITIAL_KUB_AMOUNT}(
             address(ponder),
-            address(oracle)
+            INITIAL_PONDER_AMOUNT,
+            INITIAL_PONDER_AMOUNT,
+            INITIAL_KUB_AMOUNT,
+            address(this),
+            block.timestamp + 1 hours
         );
-        _verifyContract("Launcher", address(launcher));
 
-        // 6. Set launcher in PONDER token
-        ponder.setLauncher(address(launcher));
-        console.log("PONDER launcher set to:", address(launcher));
-
-        // 7. Deploy MasterChef
-        PonderMasterChef masterChef = new PonderMasterChef(
-            ponder,
-            factory,
-            treasury,
-            PONDER_PER_SECOND,
-            block.timestamp
-        );
-        _verifyContract("MasterChef", address(masterChef));
-
-        // 8. Setup initial prices and liquidity
-        setupInitialPrices(ponder, router, oracle, ponderKubPair);
-
-        return DeploymentAddresses({
-            ponder: address(ponder),
-            factory: address(factory),
-            kkubUnwrapper: address(kkubUnwrapper),
-            router: address(router),
-            oracle: address(oracle),
-            ponderKubPair: ponderKubPair,
-            masterChef: address(masterChef),
-            launcher: address(launcher)
-        });
+        oracle.update(ponderKubPair);
     }
 
     function _verifyContract(string memory name, address contractAddress) internal view {
@@ -208,14 +206,14 @@ contract DeployBitkubScript is Script {
         console.log("PONDER/KKUB Pair:", addresses.ponderKubPair);
         console.log("MasterChef:", addresses.masterChef);
         console.log("FiveFiveFiveLauncher:", addresses.launcher);
+        console.log("Staking:", addresses.staking);
         console.log("Treasury:", treasury);
 
         console.log("\nInitial Liquidity Details:");
         console.log("--------------------------------");
         console.log("Initial KUB:", INITIAL_KUB_AMOUNT / 1e18);
         console.log("Initial PONDER:", INITIAL_PONDER_AMOUNT / 1e18);
-        console.log("Initial PONDER Price in USD: $0.0001");
-        console.log("Initial PONDER/KUB Rate:", INITIAL_PONDER_AMOUNT / INITIAL_KUB_AMOUNT);
+        console.log("Initial PONDER Price in KUB:", INITIAL_KUB_AMOUNT * 1e18 / INITIAL_PONDER_AMOUNT);
 
         console.log("\nToken Allocation Summary:");
         console.log("--------------------------------");

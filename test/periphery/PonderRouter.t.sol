@@ -32,7 +32,7 @@ contract PonderRouterTest is Test {
         deadline = block.timestamp + 1 days;
 
         // Deploy core contracts
-        factory = new PonderFactory(address(this), address(1));
+        factory = new PonderFactory(address(this), address(1), address(2), address(3));
         weth = IWETH(address(new WETH9()));
         MockKKUBUnwrapper unwrapper = new MockKKUBUnwrapper(address(weth));
         router = new PonderRouter(address(factory), address(weth), address(unwrapper));
