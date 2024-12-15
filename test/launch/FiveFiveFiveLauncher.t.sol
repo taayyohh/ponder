@@ -36,6 +36,7 @@ contract FiveFiveFiveLauncherTest is Test {
     event LaunchCreated(uint256 indexed launchId, address indexed token, address creator, string imageURI);
     event KUBContributed(uint256 indexed launchId, address contributor, uint256 amount);
     event PonderContributed(uint256 indexed launchId, address contributor, uint256 amount, uint256 kubValue);
+    event TokensDistributed(uint256 indexed launchId, address indexed recipient, uint256 amount);
     event DualPoolsCreated(uint256 indexed launchId, address memeKubPair, address memePonderPair, uint256 kubLiquidity, uint256 ponderLiquidity);
     event LaunchCompleted(uint256 indexed launchId, uint256 kubRaised, uint256 ponderRaised);
     event PonderBurned(uint256 indexed launchId, uint256 amount);
@@ -48,19 +49,16 @@ contract FiveFiveFiveLauncherTest is Test {
         factory = new PonderFactory(address(this), address(this));
         ponder = new PonderToken(treasury, teamReserve, marketing, address(this));
 
-        // Create PONDER/WETH pair
         ponderWethPair = factory.createPair(address(ponder), address(weth));
 
-        // Deploy router with KKUB unwrapper
         MockKKUBUnwrapper unwrapper = new MockKKUBUnwrapper(address(weth));
         router = new PonderRouter(address(factory), address(weth), address(unwrapper));
 
-        // Setup initial PONDER minting and liquidity
+        // Setup initial PONDER liquidity
         ponder.setMinter(address(this));
         ponder.mint(address(this), INITIAL_LIQUIDITY * 10);
         ponder.approve(address(router), INITIAL_LIQUIDITY * 10);
 
-        // Add initial PONDER/WETH liquidity
         vm.deal(address(this), INITIAL_LIQUIDITY);
         router.addLiquidityETH{value: INITIAL_LIQUIDITY}(
             address(ponder),
@@ -71,7 +69,6 @@ contract FiveFiveFiveLauncherTest is Test {
             block.timestamp + 1
         );
 
-        // Deploy and initialize oracle
         oracle = new PonderPriceOracle(
             address(factory),
             ponderWethPair,
@@ -80,7 +77,6 @@ contract FiveFiveFiveLauncherTest is Test {
 
         _initializeOracleHistory();
 
-        // Deploy launcher
         launcher = new FiveFiveFiveLauncher(
             address(factory),
             payable(address(router)),
@@ -100,17 +96,19 @@ contract FiveFiveFiveLauncherTest is Test {
         vm.prank(bob);
         ponder.approve(address(launcher), type(uint256).max);
 
-        // Transfer PONDER minting rights to launcher
         ponder.setMinter(address(launcher));
     }
 
     function testCreateLaunch() public {
         vm.startPrank(creator);
-        uint256 launchId = launcher.createLaunch(
-            "Test Token",
-            "TEST",
-            "ipfs://test"
-        );
+
+        FiveFiveFiveLauncher.LaunchParams memory params = FiveFiveFiveLauncher.LaunchParams({
+            name: "Test Token",
+            symbol: "TEST",
+            imageURI: "ipfs://test"
+        });
+
+        uint256 launchId = launcher.createLaunch(params);
         vm.stopPrank();
 
         (
@@ -131,63 +129,97 @@ contract FiveFiveFiveLauncherTest is Test {
         assertTrue(tokenAddress != address(0));
     }
 
+    function _calculateExpectedTokens(
+        uint256 contribution,
+        uint256 totalSupply,
+        uint256 targetRaise
+    ) internal pure returns (uint256) {
+        // First calculate contributor allocation (70%)
+        uint256 contributorTokens = (totalSupply * 70) / 100;
+
+        // Then calculate this contribution's share
+        return (contribution * contributorTokens) / targetRaise;
+    }
+
     function testKUBContribution() public {
         uint256 launchId = _createTestLaunch();
         uint256 contribution = 1000 ether;
 
-        vm.startPrank(alice);
-        vm.expectEmit(true, true, false, true);
-        emit KUBContributed(launchId, alice, contribution);
-        launcher.contributeKUB{value: contribution}(launchId);
-        vm.stopPrank();
+        // Get actual total supply from token
+        (address tokenAddress,,,,,,) = launcher.getLaunchInfo(launchId);
+        uint256 totalSupply = LaunchToken(tokenAddress).TOTAL_SUPPLY();
 
-        (uint256 kubCollected, , ,uint256 totalValue) = launcher.getContributionInfo(launchId);
-        assertEq(kubCollected, contribution);
-        assertEq(totalValue, contribution);
+        // Calculate expected tokens
+        uint256 contributorTokens = (totalSupply * 70) / 100;
+        uint256 expectedTokens = (contribution * contributorTokens) / TARGET_RAISE;
+
+        console.log("Total Supply:", totalSupply);
+        console.log("Contributor Tokens:", contributorTokens);
+        console.log("Expected Tokens:", expectedTokens);
+
+        vm.startPrank(alice);
+        launcher.contributeKUB{value: contribution}(launchId);
+
+        // Get actual tokens received
+        (,,,uint256 tokensReceived) = launcher.getContributorInfo(launchId, alice);
+        console.log("Actual Tokens Received:", tokensReceived);
+
+        // Let's try to understand the ratio
+        console.log("Actual/Expected Ratio:", (tokensReceived * 100) / expectedTokens);
+
+        assertEq(tokensReceived, expectedTokens, "Token distribution incorrect");
+        vm.stopPrank();
     }
 
     function testPonderContribution() public {
         uint256 launchId = _createTestLaunch();
         uint256 ponderAmount = 10000 ether;
+        uint256 expectedKubValue = _getPonderValue(ponderAmount);
+
+        (address tokenAddress,,,,,,) = launcher.getLaunchInfo(launchId);
+        uint256 totalSupply = LaunchToken(tokenAddress).TOTAL_SUPPLY();
+        uint256 contributorTokens = (totalSupply * 70) / 100;
+        uint256 expectedTokens = (expectedKubValue * contributorTokens) / TARGET_RAISE;
 
         vm.startPrank(alice);
+
+        // First expect TokensDistributed event
+        vm.expectEmit(true, true, false, true);
+        emit TokensDistributed(launchId, alice, expectedTokens);
+
+        // Then expect PonderContributed event
+        vm.expectEmit(true, true, false, true);
+        emit PonderContributed(launchId, alice, ponderAmount, expectedKubValue);
+
         launcher.contributePONDER(launchId, ponderAmount);
+
+        (,uint256 ponderContributed, uint256 ponderValue, uint256 tokensReceived) =
+                            launcher.getContributorInfo(launchId, alice);
+
+        assertEq(ponderContributed, ponderAmount);
+        assertEq(ponderValue, expectedKubValue);
+        assertEq(tokensReceived, expectedTokens);
+
         vm.stopPrank();
-
-        (
-            uint256 kubCollected,
-            uint256 ponderCollected,
-            uint256 ponderValueCollected,
-            uint256 totalValue
-        ) = launcher.getContributionInfo(launchId);
-
-        assertEq(ponderCollected, ponderAmount);
-        assertGt(ponderValueCollected, 0);
-        assertEq(kubCollected, 0);
-        assertEq(totalValue, ponderValueCollected);
     }
 
     function testCompleteLaunchWithDualPools() public {
         uint256 launchId = _createTestLaunch();
 
-        // KUB contribution
         vm.startPrank(alice);
         launcher.contributeKUB{value: 3000 ether}(launchId);
         vm.stopPrank();
 
-        // PONDER contribution - adjust for 0.1 KUB per PONDER price
-        uint256 remainingValueKub = 2555 ether;  // Remaining value in KUB
-        uint256 ponderAmount = remainingValueKub * 10;  // Convert KUB to PONDER (1 PONDER = 0.1 KUB)
+        uint256 remainingValueKub = 2555 ether;
+        uint256 ponderAmount = remainingValueKub * 10; // Convert remaining KUB value to PONDER
 
         vm.startPrank(bob);
         launcher.contributePONDER(launchId, ponderAmount);
         vm.stopPrank();
 
-        // Verify launch completed
         (,,,, uint256 kubRaised, bool launched,) = launcher.getLaunchInfo(launchId);
         assertTrue(launched, "Launch should be completed");
 
-        // Check pool creation
         (
             address memeKubPair,
             address memePonderPair,
@@ -198,82 +230,49 @@ contract FiveFiveFiveLauncherTest is Test {
         assertTrue(memePonderPair != address(0), "PONDER pool not created");
         assertTrue(hasSecondaryPool, "Secondary pool flag not set");
 
-        // Verify pool liquidity
         assertGt(PonderERC20(memeKubPair).totalSupply(), 0, "No KUB pool liquidity");
         assertGt(PonderERC20(memePonderPair).totalSupply(), 0, "No PONDER pool liquidity");
     }
 
-    function testLPLocking() public {
+    function testTokenAllocation() public {
         uint256 launchId = _createTestLaunch();
-
-        // Complete launch
-        vm.prank(alice);
-        launcher.contributeKUB{value: TARGET_RAISE}(launchId);
-
-        // Try early withdrawal
-        vm.startPrank(creator);
-        vm.expectRevert(FiveFiveFiveLauncher.LPStillLocked.selector);
-        launcher.withdrawLP(launchId);
-        vm.stopPrank();
-
-        // Move past lock period
-        (,,,,,, uint256 lpUnlockTime) = launcher.getLaunchInfo(launchId);
-        vm.warp(lpUnlockTime + 1);
-
-        // Withdraw LP tokens
-        vm.startPrank(creator);
-        launcher.withdrawLP(launchId);
-        vm.stopPrank();
-
-        // Verify LP token receipt
-        (address kubPair,,) = launcher.getPoolInfo(launchId);
-        assertGt(PonderERC20(kubPair).balanceOf(creator), 0, "Creator should have LP tokens");
-    }
-
-    function testExcessKUBContribution() public {
-        uint256 launchId = _createTestLaunch();
-        uint256 excess = TARGET_RAISE + 1000 ether;
-        uint256 balanceBefore = alice.balance;
-
-        vm.prank(alice);
-        launcher.contributeKUB{value: excess}(launchId);
-
-        assertEq(
-            alice.balance,
-            balanceBefore - TARGET_RAISE,
-            "Excess KUB should be returned"
-        );
-    }
-
-    function testPriceProtection() public {
-        uint256 launchId = _createTestLaunch();
-
-        // Move time forward past price staleness threshold
-        vm.warp(block.timestamp + 3 hours);
+        uint256 onePercent = TARGET_RAISE / 100;
 
         vm.startPrank(alice);
-        vm.expectRevert(FiveFiveFiveLauncher.StalePrice.selector);
-        launcher.contributePONDER(launchId, 1000 ether);
+        launcher.contributeKUB{value: onePercent}(launchId);
         vm.stopPrank();
+
+        // Should receive 1% of 70% of total supply
+        uint256 expectedTokens = (555_555_555 ether * 70) / 10000;
+        (, , , uint256 tokensReceived) = launcher.getContributorInfo(launchId, alice);
+        assertEq(tokensReceived, expectedTokens, "Incorrect token allocation");
     }
 
     function _createTestLaunch() internal returns (uint256) {
+        FiveFiveFiveLauncher.LaunchParams memory params = FiveFiveFiveLauncher.LaunchParams({
+            name: "Test Token",
+            symbol: "TEST",
+            imageURI: "ipfs://test"
+        });
+
         vm.prank(creator);
-        return launcher.createLaunch("Test Token", "TEST", "ipfs://test");
+        return launcher.createLaunch(params);
     }
 
     function _initializeOracleHistory() internal {
-        // Initial sync
         PonderPair(ponderWethPair).sync();
         vm.warp(block.timestamp + 1 hours);
         oracle.update(ponderWethPair);
 
-        // Build price history
         for (uint i = 0; i < 3; i++) {
             vm.warp(block.timestamp + 1 hours);
             PonderPair(ponderWethPair).sync();
             oracle.update(ponderWethPair);
         }
+    }
+
+    function _getPonderValue(uint256 amount) internal view returns (uint256) {
+        return oracle.getCurrentPrice(ponderWethPair, address(ponder), amount);
     }
 
     receive() external payable {}

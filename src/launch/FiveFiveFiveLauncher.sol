@@ -9,7 +9,8 @@ import "../core/PonderToken.sol";
 import "../core/PonderPriceOracle.sol";
 
 contract FiveFiveFiveLauncher {
-    struct LaunchInfo {
+    // Base launch information
+    struct LaunchBaseInfo {
         address tokenAddress;
         string name;
         string symbol;
@@ -17,57 +18,73 @@ contract FiveFiveFiveLauncher {
         bool launched;
         address creator;
         uint256 lpUnlockTime;
+    }
 
-        // Contribution tracking
+    // Track all contribution amounts
+    struct ContributionState {
         uint256 kubCollected;
         uint256 ponderCollected;
         uint256 ponderValueCollected;
+        uint256 tokensDistributed;
+    }
 
-        // Pool info
+    // Token distribution tracking
+    struct TokenAllocation {
+        uint256 tokensForContributors;
+        uint256 tokensForLP;
+    }
+
+    // Pool addresses and state
+    struct PoolInfo {
         address memeKubPair;
         address memePonderPair;
     }
 
+    // Main launch info struct with minimized nesting
+    struct LaunchInfo {
+        LaunchBaseInfo base;
+        ContributionState contributions;
+        TokenAllocation allocation;
+        PoolInfo pools;
+        mapping(address => ContributorInfo) contributors;
+    }
+
+    // Individual contributor tracking
+    struct ContributorInfo {
+        uint256 kubContributed;
+        uint256 ponderContributed;
+        uint256 ponderValue;
+        uint256 tokensReceived;
+    }
+
+    // Input parameters for launch creation
+    struct LaunchParams {
+        string name;
+        string symbol;
+        string imageURI;
+    }
+
+    // Internal state for handling contributions
+    struct ContributionResult {
+        uint256 contribution;
+        uint256 tokensToDistribute;
+        uint256 refund;
+    }
+
+    // Configuration for pool creation
     struct PoolConfig {
         uint256 kubAmount;
         uint256 tokenAmount;
         uint256 ponderAmount;
     }
 
-    /// @notice Protocol constants
-    uint256 public constant TARGET_RAISE = 5555 ether;
-    uint256 public constant BASIS_POINTS = 10000;
-    uint256 public constant LP_LOCK_PERIOD = 180 days;
-
-    // Distribution constants
-    uint256 public constant KUB_TO_MEME_KUB_LP = 6000;
-    uint256 public constant KUB_TO_PONDER_KUB_LP = 2000;
-    uint256 public constant KUB_TO_MEME_PONDER_LP = 2000;
-    uint256 public constant PONDER_TO_MEME_PONDER = 8000;
-    uint256 public constant PONDER_TO_BURN = 2000;
-    uint256 public constant PRICE_STALENESS_THRESHOLD = 2 hours;
-
-
-    /// @notice Core protocol references
-    IPonderFactory public immutable factory;
-    IPonderRouter public immutable router;
-    PonderToken public immutable ponder;
-    PonderPriceOracle public immutable priceOracle;
-
-    /// @notice Protocol state
-    address public owner;
-    address public feeCollector;
-    uint256 public launchCount;
-    mapping(uint256 => LaunchInfo) public launches;
-
-    /// @notice Events
-    event LaunchCreated(uint256 indexed launchId, address indexed token, address creator, string imageURI);
-    event KUBContributed(uint256 indexed launchId, address contributor, uint256 amount);
-    event PonderContributed(uint256 indexed launchId, address contributor, uint256 amount, uint256 kubValue);
-    event LaunchCompleted(uint256 indexed launchId, uint256 kubRaised, uint256 ponderRaised);
-    event LPTokensWithdrawn(uint256 indexed launchId, address indexed creator, uint256 amount);
-    event PonderBurned(uint256 indexed launchId, uint256 amount);
-    event DualPoolsCreated(uint256 indexed launchId, address memeKubPair, address memePonderPair, uint256 kubLiquidity, uint256 ponderLiquidity);
+    // State for handling launch finalization
+    struct FinalizationState {
+        address tokenAddress;
+        uint256 kubAmount;
+        uint256 ponderAmount;
+        uint256 tokenAmount;
+    }
 
     /// @notice Custom errors
     error LaunchNotFound();
@@ -80,6 +97,47 @@ contract FiveFiveFiveLauncher {
     error LPStillLocked();
     error StalePrice();
     error ExcessiveContribution();
+    error InsufficientLPTokens();
+
+    // Constants
+    uint256 public constant TARGET_RAISE = 5555 ether;
+    uint256 public constant BASIS_POINTS = 10000;
+    uint256 public constant LP_LOCK_PERIOD = 180 days;
+
+    // Distribution constants
+    uint256 public constant KUB_TO_MEME_KUB_LP = 6000;
+    uint256 public constant KUB_TO_PONDER_KUB_LP = 2000;
+    uint256 public constant KUB_TO_MEME_PONDER_LP = 2000;
+    uint256 public constant PONDER_TO_MEME_PONDER = 8000;
+    uint256 public constant PONDER_TO_BURN = 2000;
+    uint256 public constant PRICE_STALENESS_THRESHOLD = 2 hours;
+
+    // Token distribution percentages
+    uint256 public constant CREATOR_PERCENT = 1000; // 10%
+    uint256 public constant LP_PERCENT = 2000;      // 20%
+    uint256 public constant CONTRIBUTOR_PERCENT = 7000; // 70%
+
+    // Core protocol references
+    IPonderFactory public immutable factory;
+    IPonderRouter public immutable router;
+    PonderToken public immutable ponder;
+    PonderPriceOracle public immutable priceOracle;
+
+    // State variables
+    address public owner;
+    address public feeCollector;
+    uint256 public launchCount;
+    mapping(uint256 => LaunchInfo) public launches;
+
+    // Events
+    event LaunchCreated(uint256 indexed launchId, address indexed token, address creator, string imageURI);
+    event KUBContributed(uint256 indexed launchId, address contributor, uint256 amount);
+    event PonderContributed(uint256 indexed launchId, address contributor, uint256 amount, uint256 kubValue);
+    event TokensDistributed(uint256 indexed launchId, address indexed recipient, uint256 amount);
+    event LaunchCompleted(uint256 indexed launchId, uint256 kubRaised, uint256 ponderRaised);
+    event LPTokensWithdrawn(uint256 indexed launchId, address indexed creator, uint256 amount);
+    event PonderBurned(uint256 indexed launchId, uint256 amount);
+    event DualPoolsCreated(uint256 indexed launchId, address memeKubPair, address memePonderPair, uint256 kubLiquidity, uint256 ponderLiquidity);
 
     constructor(
         address _factory,
@@ -97,158 +155,243 @@ contract FiveFiveFiveLauncher {
     }
 
     function createLaunch(
-        string calldata name,
-        string calldata symbol,
-        string calldata imageURI
+        LaunchParams calldata params
     ) external returns (uint256 launchId) {
-        if(bytes(imageURI).length == 0) revert ImageRequired();
-        _validateTokenParams(name, symbol);
+        if(bytes(params.imageURI).length == 0) revert ImageRequired();
+        _validateTokenParams(params.name, params.symbol);
 
         launchId = launchCount++;
-        LaunchInfo storage launch = launches[launchId];
+        LaunchToken token = _deployToken(params);
+        _initializeLaunch(launchId, address(token), params, msg.sender);
 
-        // Deploy token
-        LaunchToken token = new LaunchToken(
-            name,
-            symbol,
+        emit LaunchCreated(launchId, address(token), msg.sender, params.imageURI);
+    }
+
+    function _deployToken(LaunchParams calldata params) internal returns (LaunchToken) {
+        return new LaunchToken(
+            params.name,
+            params.symbol,
             address(this),
             address(factory),
             payable(address(router)),
             address(ponder)
         );
+    }
 
-        launch.tokenAddress = address(token);
-        launch.name = name;
-        launch.symbol = symbol;
-        launch.imageURI = imageURI;
-        launch.creator = msg.sender;
+    function _initializeLaunch(
+        uint256 launchId,
+        address tokenAddress,
+        LaunchParams calldata params,
+        address creator
+    ) internal {
+        LaunchInfo storage launch = launches[launchId];
+
+        // Initialize base info
+        launch.base.tokenAddress = tokenAddress;
+        launch.base.name = params.name;
+        launch.base.symbol = params.symbol;
+        launch.base.imageURI = params.imageURI;
+        launch.base.creator = creator;
+
+        // Calculate token allocations
+        uint256 totalSupply = LaunchToken(tokenAddress).TOTAL_SUPPLY();
+        launch.allocation.tokensForContributors = (totalSupply * CONTRIBUTOR_PERCENT) / BASIS_POINTS;
+        launch.allocation.tokensForLP = (totalSupply * LP_PERCENT) / BASIS_POINTS;
 
         // Setup creator vesting
-        uint256 creatorTokens = (token.TOTAL_SUPPLY() * 10) / 100;
-        token.setupVesting(msg.sender, creatorTokens);
-
-        emit LaunchCreated(launchId, address(token), msg.sender, imageURI);
+        uint256 creatorTokens = (totalSupply * CREATOR_PERCENT) / BASIS_POINTS;
+        LaunchToken(tokenAddress).setupVesting(creator, creatorTokens);
     }
 
     function contributeKUB(uint256 launchId) external payable {
         LaunchInfo storage launch = launches[launchId];
-        if(launch.tokenAddress == address(0)) revert LaunchNotFound();
-        if(launch.launched) revert AlreadyLaunched();
+        _validateLaunchState(launch);
         if(msg.value == 0) revert InvalidAmount();
 
-        uint256 remaining = TARGET_RAISE - (launch.kubCollected + launch.ponderValueCollected);
-        uint256 contribution = msg.value > remaining ? remaining : msg.value;
+        ContributionResult memory result = _calculateKubContribution(launch, msg.value);
+        _processKubContribution(launchId, launch, result, msg.sender);
 
-        launch.kubCollected += contribution;
-
-        if (msg.value > contribution) {
-            payable(msg.sender).transfer(msg.value - contribution);
+        if (result.refund > 0) {
+            payable(msg.sender).transfer(result.refund);
         }
 
-        emit KUBContributed(launchId, msg.sender, contribution);
+        _checkAndFinalizeLaunch(launchId, launch);
+    }
 
-        if (launch.kubCollected + launch.ponderValueCollected >= TARGET_RAISE) {
-            _finalizeLaunch(launchId);
-        }
+    function _validateLaunchState(LaunchInfo storage launch) internal view {
+        if(launch.base.tokenAddress == address(0)) revert LaunchNotFound();
+        if(launch.base.launched) revert AlreadyLaunched();
+    }
+
+    function _calculateKubContribution(
+        LaunchInfo storage launch,
+        uint256 amount
+    ) internal view returns (ContributionResult memory result) {
+        uint256 remaining = TARGET_RAISE - (launch.contributions.kubCollected + launch.contributions.ponderValueCollected);
+        result.contribution = amount > remaining ? remaining : amount;
+
+        result.tokensToDistribute = (result.contribution * launch.allocation.tokensForContributors) / TARGET_RAISE;
+
+        result.refund = amount > remaining ? amount - remaining : 0;
+        return result;
+    }
+
+    function _processKubContribution(
+        uint256 launchId,
+        LaunchInfo storage launch,
+        ContributionResult memory result,
+        address contributor
+    ) internal {
+        // Update contribution state
+        launch.contributions.kubCollected += result.contribution;
+        launch.contributions.tokensDistributed += result.tokensToDistribute;
+
+        // Update contributor info
+        ContributorInfo storage contributorInfo = launch.contributors[contributor];
+        contributorInfo.kubContributed += result.contribution;
+        contributorInfo.tokensReceived += result.tokensToDistribute;
+
+        // Transfer tokens
+        LaunchToken(launch.base.tokenAddress).transfer(contributor, result.tokensToDistribute);
+
+        // Emit events
+        emit TokensDistributed(launchId, contributor, result.tokensToDistribute);
+        emit KUBContributed(launchId, contributor, result.contribution);
     }
 
     function contributePONDER(uint256 launchId, uint256 amount) external {
-        if(amount == 0) revert InvalidAmount();
         LaunchInfo storage launch = launches[launchId];
+        _validateLaunchState(launch);
+        if(amount == 0) revert InvalidAmount();
 
-        if(launch.tokenAddress == address(0)) revert LaunchNotFound();
-        if(launch.launched) revert AlreadyLaunched();
-
-        // Get PONDER value
         uint256 kubValue = _getPonderValue(amount);
-        uint256 remaining = TARGET_RAISE - (launch.kubCollected + launch.ponderValueCollected);
+        ContributionResult memory result = _calculatePonderContribution(launch, amount, kubValue);
+
+        _processPonderContribution(launchId, launch, result, kubValue, amount, msg.sender);
+        _checkAndFinalizeLaunch(launchId, launch);
+    }
+
+    function _calculatePonderContribution(
+        LaunchInfo storage launch,
+        uint256 amount,
+        uint256 kubValue
+    ) internal view returns (ContributionResult memory result) {
+        uint256 remaining = TARGET_RAISE - (launch.contributions.kubCollected + launch.contributions.ponderValueCollected);
         if (kubValue > remaining) revert ExcessiveContribution();
 
-        // Update state
-        launch.ponderCollected += amount;
-        launch.ponderValueCollected += kubValue;
+        result.contribution = kubValue;
+        result.tokensToDistribute = (kubValue * launch.allocation.tokensForContributors) / TARGET_RAISE;
+        return result;
+    }
 
-        // Transfer PONDER
-        ponder.transferFrom(msg.sender, address(this), amount);
+    function _processPonderContribution(
+        uint256 launchId,
+        LaunchInfo storage launch,
+        ContributionResult memory result,
+        uint256 kubValue,
+        uint256 ponderAmount,
+        address contributor
+    ) internal {
+        // Update contribution state
+        launch.contributions.ponderCollected += ponderAmount;
+        launch.contributions.ponderValueCollected += kubValue;
+        launch.contributions.tokensDistributed += result.tokensToDistribute;
 
-        emit PonderContributed(launchId, msg.sender, amount, kubValue);
+        // Update contributor info
+        ContributorInfo storage contributorInfo = launch.contributors[contributor];
+        contributorInfo.ponderContributed += ponderAmount;
+        contributorInfo.ponderValue += kubValue;
+        contributorInfo.tokensReceived += result.tokensToDistribute;
 
-        if (launch.kubCollected + launch.ponderValueCollected >= TARGET_RAISE) {
+        // Transfer tokens
+        ponder.transferFrom(contributor, address(this), ponderAmount);
+        LaunchToken(launch.base.tokenAddress).transfer(contributor, result.tokensToDistribute);
+
+        // Emit events
+        emit TokensDistributed(launchId, contributor, result.tokensToDistribute);
+        emit PonderContributed(launchId, contributor, ponderAmount, kubValue);
+    }
+
+    function _checkAndFinalizeLaunch(uint256 launchId, LaunchInfo storage launch) internal {
+        if (launch.contributions.kubCollected + launch.contributions.ponderValueCollected >= TARGET_RAISE) {
             _finalizeLaunch(launchId);
         }
     }
 
-    // Update the _finalizeLaunch function to emit the DualPoolsCreated event
     function _finalizeLaunch(uint256 launchId) internal {
         LaunchInfo storage launch = launches[launchId];
-        launch.launched = true;
+        if (launch.contributions.tokensDistributed + launch.allocation.tokensForLP > LaunchToken(launch.base.tokenAddress).TOTAL_SUPPLY())
+            revert InsufficientLPTokens();
 
-        LaunchToken token = LaunchToken(launch.tokenAddress);
-
-        // Calculate pool configurations
+        launch.base.launched = true;
         PoolConfig memory pools = _calculatePoolAmounts(launch);
+        _createPools(launchId, launch, pools);
+        _enableTrading(launch);
 
-        // Create pools
-        launch.memeKubPair = _createKubPool(launch.tokenAddress, pools.kubAmount);
-
-        if (launch.ponderCollected > 0) {
-            launch.memePonderPair = _createPonderPool(
-                launch.tokenAddress,
-                pools.ponderAmount,
-                pools.tokenAmount
-            );
-
-            // Burn PONDER portion
-            uint256 ponderToBurn = (launch.ponderCollected * PONDER_TO_BURN) / BASIS_POINTS;
-            ponder.burn(ponderToBurn);
-            emit PonderBurned(launchId, ponderToBurn);
-        }
-
-        // Emit pool creation event
-        emit DualPoolsCreated(
+        emit LaunchCompleted(
             launchId,
-            launch.memeKubPair,
-            launch.memePonderPair,
-            pools.kubAmount,
-            pools.ponderAmount
+            launch.contributions.kubCollected,
+            launch.contributions.ponderCollected
         );
-
-        // Enable trading
-        token.setPairs(launch.memeKubPair, launch.memePonderPair);
-        token.enableTransfers();
-
-        // Set LP unlock time
-        launch.lpUnlockTime = block.timestamp + LP_LOCK_PERIOD;
-
-        emit LaunchCompleted(launchId, launch.kubCollected, launch.ponderCollected);
     }
 
-    function _calculatePoolAmounts(LaunchInfo memory launch) internal pure returns (PoolConfig memory pools) {
-        pools.kubAmount = (launch.kubCollected * KUB_TO_MEME_KUB_LP) / BASIS_POINTS;
-        pools.ponderAmount = (launch.ponderCollected * PONDER_TO_MEME_PONDER) / BASIS_POINTS;
-        pools.tokenAmount = (pools.kubAmount * 555_555_555) / 5555;
+    function _calculatePoolAmounts(LaunchInfo storage launch) internal view returns (PoolConfig memory pools) {
+        pools.kubAmount = (launch.contributions.kubCollected * KUB_TO_MEME_KUB_LP) / BASIS_POINTS;
+        pools.ponderAmount = (launch.contributions.ponderCollected * PONDER_TO_MEME_PONDER) / BASIS_POINTS;
+        pools.tokenAmount = launch.allocation.tokensForLP / 2; // Split LP tokens between pairs
         return pools;
     }
 
-    // Update _getPonderValue function to check for price staleness
-    function _getPonderValue(uint256 amount) internal view returns (uint256) {
-        address ponderKubPair = factory.getPair(address(ponder), router.WETH());
+    function _createPools(
+        uint256 launchId,
+        LaunchInfo storage launch,
+        PoolConfig memory pools
+    ) internal {
+        // Create KUB pool
+        launch.pools.memeKubPair = _createKubPool(
+            launch.base.tokenAddress,
+            pools.kubAmount,
+            pools.tokenAmount
+        );
 
-        // Get the last update timestamp from the pair
-        (, , uint32 lastUpdateTime) = PonderPair(ponderKubPair).getReserves();
-
-        // Check for price staleness
-        if (block.timestamp - lastUpdateTime > PRICE_STALENESS_THRESHOLD) {
-            revert StalePrice();
+        // Create PONDER pool if needed
+        if (launch.contributions.ponderCollected > 0) {
+            launch.pools.memePonderPair = _createPonderPool(
+                launch.base.tokenAddress,
+                pools.ponderAmount,
+                pools.tokenAmount
+            );
+            _burnPonderTokens(launchId, launch);
         }
 
-        return priceOracle.getCurrentPrice(ponderKubPair, address(ponder), amount);
+        emit DualPoolsCreated(
+            launchId,
+            launch.pools.memeKubPair,
+            launch.pools.memePonderPair,
+            pools.kubAmount,
+            pools.ponderAmount
+        );
     }
 
-    function _createKubPool(address tokenAddress, uint256 kubAmount) internal returns (address) {
-        uint256 tokenAmount = (kubAmount * 555_555_555) / 5555;
-        address pair = factory.createPair(tokenAddress, router.WETH());
+    function _burnPonderTokens(uint256 launchId, LaunchInfo storage launch) internal {
+        uint256 ponderToBurn = (launch.contributions.ponderCollected * PONDER_TO_BURN) / BASIS_POINTS;
+        ponder.burn(ponderToBurn);
+        emit PonderBurned(launchId, ponderToBurn);
+    }
 
+    function _enableTrading(LaunchInfo storage launch) internal {
+        LaunchToken token = LaunchToken(launch.base.tokenAddress);
+        token.setPairs(launch.pools.memeKubPair, launch.pools.memePonderPair);
+        token.enableTransfers();
+        launch.base.lpUnlockTime = block.timestamp + LP_LOCK_PERIOD;
+    }
+
+    function _createKubPool(
+        address tokenAddress,
+        uint256 kubAmount,
+        uint256 tokenAmount
+    ) internal returns (address) {
+        address pair = factory.createPair(tokenAddress, router.WETH());
         LaunchToken(tokenAddress).approve(address(router), tokenAmount);
 
         router.addLiquidityETH{value: kubAmount}(
@@ -269,7 +412,6 @@ contract FiveFiveFiveLauncher {
         uint256 tokenAmount
     ) internal returns (address) {
         address pair = factory.createPair(tokenAddress, address(ponder));
-
         LaunchToken(tokenAddress).approve(address(router), tokenAmount);
         ponder.approve(address(router), ponderAmount);
 
@@ -289,44 +431,82 @@ contract FiveFiveFiveLauncher {
 
     function withdrawLP(uint256 launchId) external {
         LaunchInfo storage launch = launches[launchId];
-        if(msg.sender != launch.creator) revert Unauthorized();
-        if(block.timestamp < launch.lpUnlockTime) revert LPStillLocked();
+        if(msg.sender != launch.base.creator) revert Unauthorized();
+        if(block.timestamp < launch.base.lpUnlockTime) revert LPStillLocked();
 
-        if (launch.memeKubPair != address(0)) {
-            _withdrawPairLP(launch.memeKubPair, launch.creator);
-        }
+        _withdrawPairLP(launch.pools.memeKubPair, launch.base.creator);
+        _withdrawPairLP(launch.pools.memePonderPair, launch.base.creator);
 
-        if (launch.memePonderPair != address(0)) {
-            _withdrawPairLP(launch.memePonderPair, launch.creator);
-        }
-
-        emit LPTokensWithdrawn(launchId, launch.creator, block.timestamp);
+        emit LPTokensWithdrawn(launchId, launch.base.creator, block.timestamp);
     }
 
     function _withdrawPairLP(address pair, address recipient) internal {
+        if (pair == address(0)) return;
         uint256 balance = PonderERC20(pair).balanceOf(address(this));
         if (balance > 0) {
             PonderERC20(pair).transfer(recipient, balance);
         }
     }
 
-    /**
-   * @notice Gets pool information for a launch
-     * @param launchId The ID of the launch to query
-     * @return memeKubPair Address of the launch token/KUB pair
-     * @return memePonderPair Address of the launch token/PONDER pair
-     * @return hasSecondaryPool Whether the launch has a PONDER pool
-     */
+    function _getPonderValue(uint256 amount) internal view returns (uint256) {
+        address ponderKubPair = factory.getPair(address(ponder), router.WETH());
+        (, , uint32 lastUpdateTime) = PonderPair(ponderKubPair).getReserves();
+
+        if (block.timestamp - lastUpdateTime > PRICE_STALENESS_THRESHOLD) {
+            revert StalePrice();
+        }
+
+        return priceOracle.getCurrentPrice(ponderKubPair, address(ponder), amount);
+    }
+
+    function _validateTokenParams(string memory name, string memory symbol) internal pure {
+        bytes memory nameBytes = bytes(name);
+        bytes memory symbolBytes = bytes(symbol);
+        if(nameBytes.length == 0 || nameBytes.length > 32) revert InvalidTokenParams();
+        if(symbolBytes.length == 0 || symbolBytes.length > 8) revert InvalidTokenParams();
+    }
+
+    // View functions with minimal stack usage
+    function getContributorInfo(uint256 launchId, address contributor) external view returns (
+        uint256 kubContributed,
+        uint256 ponderContributed,
+        uint256 ponderValue,
+        uint256 tokensReceived
+    ) {
+        ContributorInfo storage info = launches[launchId].contributors[contributor];
+        return (
+            info.kubContributed,
+            info.ponderContributed,
+            info.ponderValue,
+            info.tokensReceived
+        );
+    }
+
+    function getContributionInfo(uint256 launchId) external view returns (
+        uint256 kubCollected,
+        uint256 ponderCollected,
+        uint256 ponderValueCollected,
+        uint256 totalValue
+    ) {
+        ContributionState storage contributions = launches[launchId].contributions;
+        return (
+            contributions.kubCollected,
+            contributions.ponderCollected,
+            contributions.ponderValueCollected,
+            contributions.kubCollected + contributions.ponderValueCollected
+        );
+    }
+
     function getPoolInfo(uint256 launchId) external view returns (
         address memeKubPair,
         address memePonderPair,
         bool hasSecondaryPool
     ) {
-        LaunchInfo storage launch = launches[launchId];
+        PoolInfo storage pools = launches[launchId].pools;
         return (
-            launch.memeKubPair,
-            launch.memePonderPair,
-            launch.memePonderPair != address(0)
+            pools.memeKubPair,
+            pools.memePonderPair,
+            pools.memePonderPair != address(0)
         );
     }
 
@@ -339,46 +519,17 @@ contract FiveFiveFiveLauncher {
         bool launched,
         uint256 lpUnlockTime
     ) {
-        LaunchInfo storage launch = launches[launchId];
+        LaunchBaseInfo storage base = launches[launchId].base;
+        ContributionState storage contributions = launches[launchId].contributions;
+
         return (
-            launch.tokenAddress,
-            launch.name,
-            launch.symbol,
-            launch.imageURI,
-            launch.kubCollected,
-            launch.launched,
-            launch.lpUnlockTime
-        );
-    }
-
-    function _validateTokenParams(string memory name, string memory symbol) internal pure {
-        bytes memory nameBytes = bytes(name);
-        bytes memory symbolBytes = bytes(symbol);
-        if(nameBytes.length == 0 || nameBytes.length > 32) revert InvalidTokenParams();
-        if(symbolBytes.length == 0 || symbolBytes.length > 8) revert InvalidTokenParams();
-    }
-
-
-    /**
-     * @notice Gets contribution details for a launch
-     * @param launchId The ID of the launch to query
-     * @return kubCollected Amount of KUB directly contributed
-     * @return ponderCollected Amount of PONDER contributed
-     * @return ponderValueCollected KUB value of PONDER contributions
-     * @return totalValue Total value collected (KUB + PONDER value)
-     */
-    function getContributionInfo(uint256 launchId) external view returns (
-        uint256 kubCollected,
-        uint256 ponderCollected,
-        uint256 ponderValueCollected,
-        uint256 totalValue
-    ) {
-        LaunchInfo storage launch = launches[launchId];
-        return (
-            launch.kubCollected,
-            launch.ponderCollected,
-            launch.ponderValueCollected,
-            launch.kubCollected + launch.ponderValueCollected
+            base.tokenAddress,
+            base.name,
+            base.symbol,
+            base.imageURI,
+            contributions.kubCollected,
+            base.launched,
+            base.lpUnlockTime
         );
     }
 
