@@ -194,11 +194,6 @@ export const kkubunwrapperAbi = [
   },
   {
     "type": "error",
-    "name": "InsufficientKYCLevel",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "NotOwner",
     "inputs": []
   },

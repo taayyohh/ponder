@@ -859,6 +859,25 @@ export const ponderrouterAbi = [
     "anonymous": false
   },
   {
+    "type": "event",
+    "name": "SwapDebug",
+    "inputs": [
+      {
+        "name": "step",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
     "type": "error",
     "name": "ExcessiveInputAmount",
     "inputs": []
