@@ -98,11 +98,13 @@ contract FiveFiveFiveLauncher {
     error StalePrice();
     error ExcessiveContribution();
     error InsufficientLPTokens();
+    error ExcessivePonderContribution();
 
     // Constants
     uint256 public constant TARGET_RAISE = 5555 ether;
     uint256 public constant BASIS_POINTS = 10000;
     uint256 public constant LP_LOCK_PERIOD = 180 days;
+    uint256 public constant MAX_PONDER_PERCENT = 2000; // 20% max PONDER contribution
 
     // Distribution constants
     uint256 public constant KUB_TO_MEME_KUB_LP = 6000;
@@ -276,8 +278,17 @@ contract FiveFiveFiveLauncher {
         uint256 amount,
         uint256 kubValue
     ) internal view returns (ContributionResult memory result) {
+        // First check if adding this contribution would exceed 20% PONDER limit
+        uint256 totalPonderValue = launch.contributions.ponderValueCollected + kubValue;
+        if (totalPonderValue > (TARGET_RAISE * MAX_PONDER_PERCENT) / BASIS_POINTS) {
+            revert ExcessivePonderContribution();
+        }
+
+        // Then check if it exceeds total remaining
         uint256 remaining = TARGET_RAISE - (launch.contributions.kubCollected + launch.contributions.ponderValueCollected);
-        if (kubValue > remaining) revert ExcessiveContribution();
+        if (kubValue > remaining) {
+            revert ExcessiveContribution();
+        }
 
         result.contribution = kubValue;
         result.tokensToDistribute = (kubValue * launch.allocation.tokensForContributors) / TARGET_RAISE;

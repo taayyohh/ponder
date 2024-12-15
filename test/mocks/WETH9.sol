@@ -1,19 +1,18 @@
-// test/mocks/WETH9.sol
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
 contract WETH9 {
-    string public name = "Wrapped Ether";
-    string public symbol = "WETH";
-    uint8 public decimals = 18;
+    string public name     = "Wrapped Ether";
+    string public symbol   = "WETH";
+    uint8  public decimals = 18;
 
-    event Deposit(address indexed dst, uint256 wad);
-    event Withdrawal(address indexed src, uint256 wad);
-    event Approval(address indexed src, address indexed dst, uint256 wad);
-    event Transfer(address indexed src, address indexed dst, uint256 wad);
+    mapping (address => uint256)                       public  balanceOf;
+    mapping (address => mapping (address => uint256))  public  allowance;
 
-    mapping(address => uint256) public balanceOf;
-    mapping(address => mapping(address => uint256)) public allowance;
+    event  Approval(address indexed src, address indexed guy, uint256 wad);
+    event  Transfer(address indexed src, address indexed dst, uint256 wad);
+    event  Deposit(address indexed dst, uint256 wad);
+    event  Withdrawal(address indexed src, uint256 wad);
 
     receive() external payable {
         deposit();
@@ -24,24 +23,24 @@ contract WETH9 {
         emit Deposit(msg.sender, msg.value);
     }
 
-    function withdraw(uint256 wad) external {
+    function withdraw(uint256 wad) public virtual {
         require(balanceOf[msg.sender] >= wad);
         balanceOf[msg.sender] -= wad;
         payable(msg.sender).transfer(wad);
         emit Withdrawal(msg.sender, wad);
     }
 
-    function totalSupply() external view returns (uint256) {
+    function totalSupply() public view returns (uint256) {
         return address(this).balance;
     }
 
-    function approve(address guy, uint256 wad) external returns (bool) {
+    function approve(address guy, uint256 wad) public returns (bool) {
         allowance[msg.sender][guy] = wad;
         emit Approval(msg.sender, guy, wad);
         return true;
     }
 
-    function transfer(address dst, uint256 wad) external returns (bool) {
+    function transfer(address dst, uint256 wad) public returns (bool) {
         return transferFrom(msg.sender, dst, wad);
     }
 

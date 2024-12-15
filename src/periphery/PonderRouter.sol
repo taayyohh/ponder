@@ -340,6 +340,8 @@ contract PonderRouter {
         KKUBUnwrapper(kkubUnwrapper).unwrapKKUB(amountOut, to);
     }
 
+    event SwapDebug(string step, uint256 value);
+
     /// @notice Swap exact tokens for ETH using KKUB unwrapper
     /// @param amountIn Amount of tokens to spend
     /// @param amountOutMin Minimum amount of ETH to receive
@@ -353,20 +355,31 @@ contract PonderRouter {
         address to,
         uint256 deadline
     ) external virtual ensure(deadline) returns (uint256[] memory amounts) {
+        emit SwapDebug("Start swap", amountIn);
+
         if (path[path.length - 1] != WETH) revert InvalidPath();
         amounts = getAmountsOut(amountIn, path);
+
+        emit SwapDebug("After getAmountsOut", amounts[amounts.length - 1]);
+
         if (amounts[amounts.length - 1] < amountOutMin) revert InsufficientOutputAmount();
+
         TransferHelper.safeTransferFrom(path[0], msg.sender, factory.getPair(path[0], path[1]), amounts[0]);
+        emit SwapDebug("After transferFrom", amounts[0]);
+
         _swap(amounts, path, address(this));
+        emit SwapDebug("After _swap", amounts[amounts.length - 1]);
+
         uint256 amountOut = amounts[amounts.length - 1];
-
-        // Add balance check
         uint256 wethBalance = IERC20(WETH).balanceOf(address(this));
-        require(wethBalance >= amountOut, "Insufficient WETH balance");
+        emit SwapDebug("WETH Balance", wethBalance);
 
-        // Approve and unwrap
+        require(wethBalance >= amountOut, "Insufficient WETH balance");
         require(IERC20(WETH).approve(kkubUnwrapper, amountOut), "WETH approval failed");
+        emit SwapDebug("After approve", amountOut);
+
         KKUBUnwrapper(kkubUnwrapper).unwrapKKUB(amountOut, to);
+        emit SwapDebug("After unwrap", amountOut);
     }
 
     /// @notice Swap ETH for exact tokens
