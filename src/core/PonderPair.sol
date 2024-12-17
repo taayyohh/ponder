@@ -157,17 +157,17 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
         uint256 balance1Adjusted = data.balance1 * 10000;
 
         if (data.amount0In > 0) {
-            uint256 fee = STANDARD_FEE * 10;
+            uint256 fee = STANDARD_FEE;  // Now correctly 30/10000 = 0.3%
             if (token1 == ponder()) {
-                fee = PONDER_LP_FEE + PONDER_CREATOR_FEE;
+                fee = PONDER_LP_FEE + PONDER_CREATOR_FEE;  // 15 + 15 = 30/10000 = 0.3%
             } else if (token0 == ponder()) {
-                fee = KUB_LP_FEE + KUB_CREATOR_FEE;
+                fee = KUB_LP_FEE + KUB_CREATOR_FEE;  // 20 + 10 = 30/10000 = 0.3%
             }
             balance0Adjusted -= data.amount0In * fee;
         }
 
         if (data.amount1In > 0) {
-            uint256 fee = STANDARD_FEE * 10;
+            uint256 fee = STANDARD_FEE;
             if (token0 == ponder()) {
                 fee = PONDER_LP_FEE + PONDER_CREATOR_FEE;
             } else if (token1 == ponder()) {
@@ -178,7 +178,6 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
 
         return balance0Adjusted * balance1Adjusted >= uint256(data.reserve0) * uint256(data.reserve1) * 1000000;
     }
-
 
     function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external override lock {
         require(amount0Out > 0 || amount1Out > 0, "Insufficient output amount");

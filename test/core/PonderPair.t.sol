@@ -418,4 +418,104 @@ contract PonderPairTest is Test {
 
         vm.stopPrank();
     }
+
+    function testKValueValidation() public {
+        // Setup pair with initial liquidity
+        uint256 initialLiquidity = addInitialLiquidity(
+            standardPair,
+            token0,
+            token1,
+            INITIAL_LIQUIDITY_AMOUNT
+        );
+
+        // Get initial K value
+        (uint112 reserve0, uint112 reserve1,) = standardPair.getReserves();
+        uint256 initialK = uint256(reserve0) * uint256(reserve1);
+
+        // Perform actual swap
+        vm.startPrank(alice);
+        token0.transfer(address(standardPair), SWAP_AMOUNT);
+        standardPair.swap(0, SWAP_AMOUNT/2, alice, "");
+        vm.stopPrank();
+
+        // Check K value hasn't decreased
+        (reserve0, reserve1,) = standardPair.getReserves();
+        uint256 newK = uint256(reserve0) * uint256(reserve1);
+        assertGe(newK, initialK, "K value should not decrease");
+    }
+
+    function testActualSwapWithFees() public {
+        // Test with launch token and KUB pair since it has special fee logic
+        addInitialLiquidity(
+            kubPair,
+            IERC20(address(launchToken)),
+            IERC20(address(weth)),
+            INITIAL_LIQUIDITY_AMOUNT
+        );
+
+        uint256 aliceWethBefore = weth.balanceOf(alice);
+        uint256 protocolBalanceBefore = launchToken.balanceOf(bob); // bob is feeTo
+        uint256 creatorBalanceBefore = launchToken.balanceOf(creator);
+
+        // Perform swap
+        vm.startPrank(alice);
+        launchToken.transfer(address(kubPair), SWAP_AMOUNT);
+        kubPair.swap(0, SWAP_AMOUNT/2, alice, "");
+        vm.stopPrank();
+
+        // Verify swap succeeded and fees were taken
+        assertGt(weth.balanceOf(alice), aliceWethBefore, "Should have received WETH");
+        assertGt(
+            launchToken.balanceOf(bob) - protocolBalanceBefore,
+            0,
+            "Protocol should have received fees"
+        );
+        assertGt(
+            launchToken.balanceOf(creator) - creatorBalanceBefore,
+            0,
+            "Creator should have received fees"
+        );
+    }
+
+    function testFuzz_KValueMaintained(uint256 swapAmount) public {
+        // Bound swap amount to reasonable values
+        swapAmount = bound(
+            swapAmount,
+            INITIAL_LIQUIDITY_AMOUNT / 100,  // 1% of liquidity
+            INITIAL_LIQUIDITY_AMOUNT / 2     // 50% of liquidity
+        );
+
+        // Add initial liquidity to standard pair
+        addInitialLiquidity(
+            standardPair,
+            token0,
+            token1,
+            INITIAL_LIQUIDITY_AMOUNT
+        );
+
+        // Store initial reserves
+        (uint112 initialReserve0, uint112 initialReserve1,) = standardPair.getReserves();
+        uint256 initialK = uint256(initialReserve0) * uint256(initialReserve1);
+
+        // Ensure alice has enough tokens
+        token0.mint(alice, swapAmount);
+
+        // Perform swap with fuzzed amount
+        vm.startPrank(alice);
+        token0.transfer(address(standardPair), swapAmount);
+        standardPair.swap(0, swapAmount/2, alice, "");
+        vm.stopPrank();
+
+        // Get final reserves
+        (uint112 finalReserve0, uint112 finalReserve1,) = standardPair.getReserves();
+        uint256 finalK = uint256(finalReserve0) * uint256(finalReserve1);
+
+        // Verify K value hasn't decreased
+        assertGe(finalK, initialK, "K should never decrease");
+
+        // Additional validations
+        assertGt(token1.balanceOf(alice), 0, "Should have received tokens");
+        assertGt(finalReserve0, initialReserve0, "Reserve0 should have increased");
+        assertLt(finalReserve1, initialReserve1, "Reserve1 should have decreased");
+    }
 }
