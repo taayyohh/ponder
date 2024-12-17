@@ -31,7 +31,7 @@ contract PonderFeeTest is Test {
     function setUp() public {
         // Deploy core contracts
         weth = new WETH9();
-        factory = new PonderFactory(address(this), address(1));
+        factory = new PonderFactory(address(this), address(1), address(2));
         MockKKUBUnwrapper unwrapper = new MockKKUBUnwrapper(address(weth));
         router = new PonderRouter(address(factory), address(weth), address(unwrapper));
 

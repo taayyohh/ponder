@@ -18,5 +18,7 @@ interface IPonderFactory {
     function setMigrator(address) external;
 
     function launcher() external view returns (address);
+    function ponder() external view returns (address);
     function setLauncher(address) external;
+    function setPonder(address) external;
 }

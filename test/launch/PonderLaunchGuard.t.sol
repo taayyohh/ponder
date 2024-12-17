@@ -29,7 +29,7 @@ contract PonderLaunchGuardTest is Test {
         weth = new ERC20("WETH", "WETH", 18);
 
         // Deploy factory
-        factory = new PonderFactory(address(this), address(this));
+        factory = new PonderFactory(address(this), address(this), address(1));
 
         // Create PONDER/WETH pair
         address pairAddress = factory.createPair(address(ponder), address(weth));

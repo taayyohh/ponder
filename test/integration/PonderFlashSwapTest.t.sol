@@ -50,7 +50,7 @@ contract PonderFlashSwapTest is Test {
         flashSwapper = new FlashSwapTest();
 
         // Deploy factory and create pair
-        factory = new PonderFactory(address(this), address(1));
+        factory = new PonderFactory(address(this), address(1), address(2));
         address pairAddress = factory.createPair(address(tokenA), address(tokenB));
         pair = PonderPair(pairAddress);
 

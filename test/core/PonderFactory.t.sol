@@ -12,12 +12,13 @@ contract PonderFactoryTest is Test {
     ERC20Mint tokenC;
     address feeToSetter = address(0xfee);
     address initialLauncher = address(0xbad);
+    address initialPonder = address(0xbade);
 
     event PairCreated(address indexed token0, address indexed token1, address pair, uint256);
     event LauncherUpdated(address indexed oldLauncher, address indexed newLauncher);
 
     function setUp() public {
-        factory = new PonderFactory(feeToSetter, initialLauncher);
+        factory = new PonderFactory(feeToSetter, initialLauncher, initialPonder);
         tokenA = new ERC20Mint("Token A", "TKNA");
         tokenB = new ERC20Mint("Token B", "TKNB");
         tokenC = new ERC20Mint("Token C", "TKNC");

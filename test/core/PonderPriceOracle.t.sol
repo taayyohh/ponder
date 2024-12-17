@@ -38,7 +38,7 @@ contract PonderPriceOracleTest is Test {
 
     function setUp() public {
         // Deploy factory
-        factory = new PonderFactory(address(this), address(1));
+        factory = new PonderFactory(address(this), address(1), address(2));
 
         // Deploy tokens with different decimals
         baseToken = new ERC20("KUB", "KUB", 18);

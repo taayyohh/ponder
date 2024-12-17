@@ -29,7 +29,7 @@ contract PonderOracleLibraryTest is Test {
         }
 
         // Deploy factory and create pair
-        factory = new PonderFactory(address(this), address(1));
+        factory = new PonderFactory(address(this), address(1), address(2));
         address pairAddress = factory.createPair(address(token0), address(token1));
         pair = PonderPair(pairAddress);
 

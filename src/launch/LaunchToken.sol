@@ -24,13 +24,16 @@ contract LaunchToken is PonderERC20 {
     uint256 public totalVestedAmount;
     uint256 public vestedClaimed;
 
-    /// @notice Pool addresses for fee handling
+    /// @notice Pool addresses
     address public kubPair;      // Primary KUB pair
     address public ponderPair;   // Secondary PONDER pair
 
     /// @notice Protocol constants
     uint256 public constant TOTAL_SUPPLY = 555_555_555 ether;
     uint256 public constant VESTING_DURATION = 180 days;
+
+    /// @notice Fee constants (used by PonderPair)
+    uint256 public constant FEE_DENOMINATOR = 10000;
 
     // KUB pair fees (0.3% total)
     uint256 public constant KUB_PROTOCOL_FEE = 20;   // 0.2% to protocol
@@ -40,13 +43,10 @@ contract LaunchToken is PonderERC20 {
     uint256 public constant PONDER_PROTOCOL_FEE = 15;  // 0.15% to protocol
     uint256 public constant PONDER_CREATOR_FEE = 15;   // 0.15% to creator
 
-    uint256 public constant FEE_DENOMINATOR = 10000;
 
     /// @notice Events
     event VestingInitialized(address indexed creator, uint256 amount, uint256 startTime, uint256 endTime);
     event TokensClaimed(address indexed creator, uint256 amount);
-    event CreatorFeePaid(address indexed creator, uint256 amount, address pair);
-    event ProtocolFeePaid(uint256 amount, address pair);
     event TransfersEnabled();
     event PairsSet(address kubPair, address ponderPair);
 
@@ -56,7 +56,6 @@ contract LaunchToken is PonderERC20 {
     error InsufficientAllowance();
     error NoTokensAvailable();
     error VestingNotStarted();
-    error InvalidFeeConfiguration();
     error PairAlreadySet();
 
     constructor(
@@ -114,7 +113,7 @@ contract LaunchToken is PonderERC20 {
 
     function transfer(address to, uint256 value) external override returns (bool) {
         if (!transfersEnabled && msg.sender != launcher) revert TransfersDisabled();
-        _transferWithFee(msg.sender, to, value);
+        _transfer(msg.sender, to, value);
         return true;
     }
 
@@ -127,43 +126,8 @@ contract LaunchToken is PonderERC20 {
             _approve(from, msg.sender, currentAllowance - value);
         }
 
-        _transferWithFee(from, to, value);
+        _transfer(from, to, value);
         return true;
-    }
-
-    function _transferWithFee(address from, address to, uint256 amount) internal {
-        // Handle KUB pair trades
-        if (to == kubPair && transfersEnabled) {
-            uint256 protocolFee = (amount * KUB_PROTOCOL_FEE) / FEE_DENOMINATOR;
-            uint256 creatorFee = (amount * KUB_CREATOR_FEE) / FEE_DENOMINATOR;
-            uint256 netAmount = amount - protocolFee - creatorFee;
-
-            _transfer(from, launcher, protocolFee);
-            _transfer(from, creator, creatorFee);
-            _transfer(from, to, netAmount);
-
-            emit ProtocolFeePaid(protocolFee, kubPair);
-            emit CreatorFeePaid(creator, creatorFee, kubPair);
-            return;
-        }
-
-        // Handle PONDER pair trades
-        if (to == ponderPair && transfersEnabled) {
-            uint256 protocolFee = (amount * PONDER_PROTOCOL_FEE) / FEE_DENOMINATOR;
-            uint256 creatorFee = (amount * PONDER_CREATOR_FEE) / FEE_DENOMINATOR;
-            uint256 netAmount = amount - protocolFee - creatorFee;
-
-            _transfer(from, launcher, protocolFee);
-            _transfer(from, creator, creatorFee);
-            _transfer(from, to, netAmount);
-
-            emit ProtocolFeePaid(protocolFee, ponderPair);
-            emit CreatorFeePaid(creator, creatorFee, ponderPair);
-            return;
-        }
-
-        // Regular transfer
-        _transfer(from, to, amount);
     }
 
     function _calculateVestedAmount() internal view returns (uint256) {

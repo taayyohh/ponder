@@ -118,8 +118,6 @@ contract PonderRouter {
         liquidity = IPonderPair(pair).mint(to);
     }
 
-    event Debug(string message, uint256 value);
-
     /// @notice Add liquidity to an ETH/KKUB pair
     /// @param token The token address to pair with ETH/KKUB
     /// @param amountTokenDesired The desired amount of the token
@@ -138,7 +136,6 @@ contract PonderRouter {
         address to,
         uint256 deadline
     ) external virtual payable ensure(deadline) returns (uint256 amountToken, uint256 amountETH, uint256 liquidity) {
-        emit Debug("Before _addLiquidity", msg.value);
         (amountToken, amountETH) = _addLiquidity(
             token,
             WETH,
@@ -148,14 +145,11 @@ contract PonderRouter {
             amountETHMin
         );
 
-        emit Debug("After _addLiquidity", amountToken);
         address pair = factory.getPair(token, WETH);
         TransferHelper.safeTransferFrom(token, msg.sender, pair, amountToken);
         IWETH(WETH).deposit{value: amountETH}();
         assert(IWETH(WETH).transfer(pair, amountETH));
         liquidity = IPonderPair(pair).mint(to);
-
-        emit Debug("Liquidity Added", liquidity);
 
         if (msg.value > amountETH) {
             TransferHelper.safeTransferETH(msg.sender, msg.value - amountETH);
@@ -340,8 +334,6 @@ contract PonderRouter {
         KKUBUnwrapper(kkubUnwrapper).unwrapKKUB(amountOut, to);
     }
 
-    event SwapDebug(string step, uint256 value);
-
     /// @notice Swap exact tokens for ETH using KKUB unwrapper
     /// @param amountIn Amount of tokens to spend
     /// @param amountOutMin Minimum amount of ETH to receive
@@ -355,31 +347,22 @@ contract PonderRouter {
         address to,
         uint256 deadline
     ) external virtual ensure(deadline) returns (uint256[] memory amounts) {
-        emit SwapDebug("Start swap", amountIn);
-
         if (path[path.length - 1] != WETH) revert InvalidPath();
         amounts = getAmountsOut(amountIn, path);
-
-        emit SwapDebug("After getAmountsOut", amounts[amounts.length - 1]);
 
         if (amounts[amounts.length - 1] < amountOutMin) revert InsufficientOutputAmount();
 
         TransferHelper.safeTransferFrom(path[0], msg.sender, factory.getPair(path[0], path[1]), amounts[0]);
-        emit SwapDebug("After transferFrom", amounts[0]);
 
         _swap(amounts, path, address(this));
-        emit SwapDebug("After _swap", amounts[amounts.length - 1]);
 
         uint256 amountOut = amounts[amounts.length - 1];
         uint256 wethBalance = IERC20(WETH).balanceOf(address(this));
-        emit SwapDebug("WETH Balance", wethBalance);
 
         require(wethBalance >= amountOut, "Insufficient WETH balance");
         require(IERC20(WETH).approve(kkubUnwrapper, amountOut), "WETH approval failed");
-        emit SwapDebug("After approve", amountOut);
 
         KKUBUnwrapper(kkubUnwrapper).unwrapKKUB(amountOut, to);
-        emit SwapDebug("After unwrap", amountOut);
     }
 
     /// @notice Swap ETH for exact tokens

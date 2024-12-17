@@ -9,6 +9,7 @@ contract PonderFactory is IPonderFactory {
     address public feeToSetter;
     address public migrator;
     address public launcher;
+    address public ponder;
 
     mapping(address => mapping(address => address)) public getPair;
     address[] public allPairs;
@@ -18,11 +19,12 @@ contract PonderFactory is IPonderFactory {
     error PairExists();
     error Forbidden();
 
-    bytes32 public constant INIT_CODE_PAIR_HASH = 0x9a82a765b06911e379e72a0467b97d0657af167aeed3ae61444d80bc20437055;
+    bytes32 public constant INIT_CODE_PAIR_HASH = 0x7c9a84dca4da90522df7fdfd5640232f639ab0c7d09627626e953ae3191b1a01;
 
-    constructor(address _feeToSetter, address _launcher) {
+    constructor(address _feeToSetter, address _launcher, address _ponder) {
         feeToSetter = _feeToSetter;
         launcher = _launcher;
+        ponder = _ponder;
     }
 
     function allPairsLength() external view returns (uint256) {
@@ -71,5 +73,12 @@ contract PonderFactory is IPonderFactory {
         address oldLauncher = launcher;
         launcher = _launcher;
         emit LauncherUpdated(oldLauncher, _launcher);
+    }
+
+    function setPonder(address _ponder) external {
+        if (msg.sender != feeToSetter) revert Forbidden();
+        address oldPonderToken = ponder;
+        ponder = _ponder;
+        emit LauncherUpdated(oldPonderToken, _ponder);
     }
 }

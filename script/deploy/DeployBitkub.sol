@@ -99,6 +99,7 @@ contract DeployBitkubScript is Script {
         // Final configuration
         PonderToken(addresses.ponder).setMinter(addresses.masterChef);
         PonderFactory(addresses.factory).setLauncher(addresses.launcher);
+        PonderFactory(addresses.factory).setPonder( addresses.ponder);
         console.log("Factory launcher set to:", addresses.launcher);
 
         vm.stopBroadcast();
@@ -113,7 +114,7 @@ contract DeployBitkubScript is Script {
         address marketing
     ) internal returns (DeploymentAddresses memory addresses) {
         // 1. Deploy core factory and periphery
-        PonderFactory factory = new PonderFactory(deployer, address(0));
+        PonderFactory factory = new PonderFactory(deployer, address(0), address(0));
         _verifyContract("PonderFactory", address(factory));
 
         KKUBUnwrapper kkubUnwrapper = new KKUBUnwrapper(KKUB);

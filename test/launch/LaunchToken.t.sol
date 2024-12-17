@@ -39,7 +39,7 @@ contract LaunchTokenTest is Test {
         // Deploy core contracts
         weth = new WETH9();
         ponder = new PonderToken(treasury, treasury, treasury, launcher);
-        factory = new PonderFactory(address(this), launcher);
+        factory = new PonderFactory(address(this), launcher, address(1));
 
         MockKKUBUnwrapper unwrapper = new MockKKUBUnwrapper(address(weth));
         router = new PonderRouter(address(factory), address(weth), address(unwrapper));
@@ -73,85 +73,6 @@ contract LaunchTokenTest is Test {
         vm.stopPrank();
     }
 
-    function testKubPairFees() public {
-        address kubPair = token.kubPair();
-
-        // Calculate expected fees
-        uint256 protocolFee = (FEE_TEST_AMOUNT * token.KUB_PROTOCOL_FEE()) / token.FEE_DENOMINATOR();
-        uint256 creatorFee = (FEE_TEST_AMOUNT * token.KUB_CREATOR_FEE()) / token.FEE_DENOMINATOR();
-        uint256 expectedTransfer = FEE_TEST_AMOUNT - protocolFee - creatorFee;
-
-        // Record initial balances
-        uint256 launcherBalanceBefore = token.balanceOf(launcher);
-        uint256 creatorBalanceBefore = token.balanceOf(creator);
-        uint256 pairBalanceBefore = token.balanceOf(kubPair);
-
-        // Execute transfer to KUB pair
-        vm.startPrank(alice);
-        vm.expectEmit(true, true, true, true);
-        emit ProtocolFeePaid(protocolFee, kubPair);
-        vm.expectEmit(true, true, true, true);
-        emit CreatorFeePaid(creator, creatorFee, kubPair);
-        token.transfer(kubPair, FEE_TEST_AMOUNT);
-        vm.stopPrank();
-
-        // Verify balances
-        assertEq(
-            token.balanceOf(kubPair) - pairBalanceBefore,
-            expectedTransfer,
-            "Incorrect transfer amount"
-        );
-        assertEq(
-            token.balanceOf(launcher) - launcherBalanceBefore,
-            protocolFee,
-            "Incorrect protocol fee"
-        );
-        assertEq(
-            token.balanceOf(creator) - creatorBalanceBefore,
-            creatorFee,
-            "Incorrect creator fee"
-        );
-    }
-
-    function testPonderPairFees() public {
-        address ponderPair = token.ponderPair();
-
-        // Calculate expected fees
-        uint256 protocolFee = (FEE_TEST_AMOUNT * token.PONDER_PROTOCOL_FEE()) / token.FEE_DENOMINATOR();
-        uint256 creatorFee = (FEE_TEST_AMOUNT * token.PONDER_CREATOR_FEE()) / token.FEE_DENOMINATOR();
-        uint256 expectedTransfer = FEE_TEST_AMOUNT - protocolFee - creatorFee;
-
-        // Record initial balances
-        uint256 launcherBalanceBefore = token.balanceOf(launcher);
-        uint256 creatorBalanceBefore = token.balanceOf(creator);
-        uint256 pairBalanceBefore = token.balanceOf(ponderPair);
-
-        // Execute transfer to PONDER pair
-        vm.startPrank(alice);
-        vm.expectEmit(true, true, true, true);
-        emit ProtocolFeePaid(protocolFee, ponderPair);
-        vm.expectEmit(true, true, true, true);
-        emit CreatorFeePaid(creator, creatorFee, ponderPair);
-        token.transfer(ponderPair, FEE_TEST_AMOUNT);
-        vm.stopPrank();
-
-        // Verify balances
-        assertEq(
-            token.balanceOf(ponderPair) - pairBalanceBefore,
-            expectedTransfer,
-            "Incorrect transfer amount"
-        );
-        assertEq(
-            token.balanceOf(launcher) - launcherBalanceBefore,
-            protocolFee,
-            "Incorrect protocol fee"
-        );
-        assertEq(
-            token.balanceOf(creator) - creatorBalanceBefore,
-            creatorFee,
-            "Incorrect creator fee"
-        );
-    }
 
     function testFailSetPairsUnauthorized() public {
         vm.prank(alice);
@@ -218,23 +139,6 @@ contract LaunchTokenTest is Test {
         assertApproxEqRel(available, vestAmount / 4, 0.01e18, "Available amount should be ~25%");
         assertEq(start, startTime, "Incorrect vesting start time");
         assertEq(end, startTime + token.VESTING_DURATION(), "Incorrect vesting end time");
-    }
-
-    function testTransferFromWithFees() public {
-        address kubPair = token.kubPair();
-        uint256 launcherBalanceBefore = token.balanceOf(launcher);
-
-        vm.startPrank(alice);
-        token.approve(bob, FEE_TEST_AMOUNT);
-        vm.stopPrank();
-
-        vm.startPrank(bob);
-        token.transferFrom(alice, kubPair, FEE_TEST_AMOUNT);
-        vm.stopPrank();
-
-        uint256 protocolFee = (FEE_TEST_AMOUNT * token.KUB_PROTOCOL_FEE()) / token.FEE_DENOMINATOR();
-        uint256 feeCollected = token.balanceOf(launcher) - launcherBalanceBefore;
-        assertEq(feeCollected, protocolFee, "Incorrect protocol fee from transferFrom");
     }
 
     function testInitialState() public {
