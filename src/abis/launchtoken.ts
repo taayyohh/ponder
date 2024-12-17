@@ -652,31 +652,6 @@ export const launchtokenAbi = [
   },
   {
     "type": "event",
-    "name": "CreatorFeePaid",
-    "inputs": [
-      {
-        "name": "creator",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "pair",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "PairsSet",
     "inputs": [
       {
@@ -687,25 +662,6 @@ export const launchtokenAbi = [
       },
       {
         "name": "ponderPair",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "ProtocolFeePaid",
-    "inputs": [
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "pair",
         "type": "address",
         "indexed": false,
         "internalType": "address"
@@ -797,11 +753,6 @@ export const launchtokenAbi = [
   {
     "type": "error",
     "name": "InsufficientAllowance",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "InvalidFeeConfiguration",
     "inputs": []
   },
   {

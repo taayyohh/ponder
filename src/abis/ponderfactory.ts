@@ -11,6 +11,11 @@ export const ponderfactoryAbi = [
         "name": "_launcher",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "_ponder",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -162,6 +167,19 @@ export const ponderfactoryAbi = [
   },
   {
     "type": "function",
+    "name": "ponder",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "setFeeTo",
     "inputs": [
       {
@@ -205,6 +223,19 @@ export const ponderfactoryAbi = [
     "inputs": [
       {
         "name": "_migrator",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setPonder",
+    "inputs": [
+      {
+        "name": "_ponder",
         "type": "address",
         "internalType": "address"
       }

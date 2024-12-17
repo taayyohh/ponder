@@ -129,15 +129,19 @@ contract PonderPairTest is Test {
         addInitialLiquidity(kubPair, launchToken, IERC20(address(weth)), INITIAL_LIQUIDITY_AMOUNT);
 
         uint256 creatorBalanceBefore = launchToken.balanceOf(creator);
-        uint256 protocolBalanceBefore = launchToken.balanceOf(bob); // Changed to bob as feeTo
+        uint256 protocolBalanceBefore = launchToken.balanceOf(bob);
 
         vm.startPrank(alice);
         launchToken.transfer(address(kubPair), SWAP_AMOUNT);
         kubPair.swap(0, 900e18, alice, "");
         vm.stopPrank();
 
+        // First protocol fee is taken: 0.2% of original amount
         uint256 expectedProtocolFee = (SWAP_AMOUNT * 20) / 10000;  // 0.2%
-        uint256 expectedCreatorFee = (SWAP_AMOUNT * 10) / 10000;   // 0.1%
+
+        // Creator fee is taken from remaining amount after protocol fee: 0.1% of (amount - protocol fee)
+        uint256 remainingAfterProtocol = SWAP_AMOUNT - expectedProtocolFee;
+        uint256 expectedCreatorFee = (remainingAfterProtocol * 10) / 10000;   // 0.1%
 
         assertEq(
             launchToken.balanceOf(creator) - creatorBalanceBefore,
@@ -145,7 +149,7 @@ contract PonderPairTest is Test {
             "Incorrect creator fee for KUB pair"
         );
         assertEq(
-            launchToken.balanceOf(bob) - protocolBalanceBefore,    // Changed to bob
+            launchToken.balanceOf(bob) - protocolBalanceBefore,
             expectedProtocolFee,
             "Incorrect protocol fee for KUB pair"
         );
@@ -278,5 +282,140 @@ contract PonderPairTest is Test {
         vm.stopPrank();
 
         assertGt(standardPair.balanceOf(bob), 0, "Should have collected fees");
+    }
+
+    function testDetailedFeeCalculations() public {
+        // Create standard pair first
+        address standardPair = factory.createPair(address(token0), address(token1));
+        PonderPair standardPairContract = PonderPair(standardPair);
+
+        // Deploy launch token
+        LaunchToken launchToken = new LaunchToken(
+            "Test Token",
+            "TEST",
+            address(this),
+            address(factory),
+            payable(address(1)),
+            address(ponder)
+        );
+
+        // Create pairs and set them
+        address launchKubPair = factory.createPair(address(launchToken), address(weth));
+        address launchPonderPair = factory.createPair(address(launchToken), address(ponder));
+
+        // Setup launch token
+        launchToken.setupVesting(creator, 1000e18);
+        launchToken.setPairs(launchKubPair, launchPonderPair);
+        launchToken.enableTransfers();
+
+        uint256 swapAmount = 1000e18;
+        uint256 FEE_DENOMINATOR = 10000;
+
+        // Test KUB pair fees
+        {
+            // Give alice enough tokens for all operations
+            deal(address(launchToken), alice, swapAmount * 10);
+            deal(address(weth), alice, swapAmount * 10);
+
+            vm.startPrank(alice);
+
+            // Setup initial KUB pair liquidity
+            launchToken.transfer(launchKubPair, swapAmount);
+            IERC20(address(weth)).transfer(launchKubPair, swapAmount);
+
+            vm.warp(block.timestamp + 1);
+            PonderPair(launchKubPair).mint(alice);
+
+            // Record balances before swap
+            uint256 creatorBalanceBefore = launchToken.balanceOf(creator);
+            uint256 feeCollectorBalanceBefore = launchToken.balanceOf(bob);
+
+            // Perform swap
+            launchToken.transfer(launchKubPair, swapAmount);
+            PonderPair(launchKubPair).swap(0, swapAmount / 2, alice, "");
+
+            // KUB pair: 0.2% protocol, 0.1% creator
+            uint256 expectedProtocolFee = (swapAmount * 20) / FEE_DENOMINATOR;  // 0.2%
+            uint256 remainingAfterProtocol = swapAmount - expectedProtocolFee;
+            uint256 expectedCreatorFee = (remainingAfterProtocol * 10) / FEE_DENOMINATOR;   // 0.1% of remaining
+
+            assertEq(
+                launchToken.balanceOf(creator) - creatorBalanceBefore,
+                expectedCreatorFee,
+                "Incorrect creator fee for KUB pair"
+            );
+            assertEq(
+                launchToken.balanceOf(bob) - feeCollectorBalanceBefore,
+                expectedProtocolFee,
+                "Incorrect protocol fee for KUB pair"
+            );
+        }
+
+        // Test PONDER pair fees
+        {
+            vm.warp(block.timestamp + 1);
+
+            // Give fresh allocation for PONDER pair testing
+            deal(address(launchToken), alice, swapAmount * 10);
+            deal(address(ponder), alice, swapAmount * 10);
+
+            launchToken.transfer(launchPonderPair, swapAmount);
+            IERC20(address(ponder)).transfer(launchPonderPair, swapAmount);
+            PonderPair(launchPonderPair).mint(alice);
+
+            // Record balances before swap
+            uint256 creatorBalanceBefore = launchToken.balanceOf(creator);
+            uint256 feeCollectorBalanceBefore = launchToken.balanceOf(bob);
+
+            // Perform swap
+            launchToken.transfer(launchPonderPair, swapAmount);
+            PonderPair(launchPonderPair).swap(0, swapAmount / 2, alice, "");
+
+            // PONDER pair: 0.15% protocol, 0.15% creator
+            uint256 expectedProtocolFee = (swapAmount * 15) / FEE_DENOMINATOR;  // 0.15%
+            uint256 remainingAfterProtocol = swapAmount - expectedProtocolFee;
+            uint256 expectedCreatorFee = (remainingAfterProtocol * 15) / FEE_DENOMINATOR;   // 0.15% of remaining
+
+            assertEq(
+                launchToken.balanceOf(creator) - creatorBalanceBefore,
+                expectedCreatorFee,
+                "Incorrect creator fee for PONDER pair"
+            );
+            assertEq(
+                launchToken.balanceOf(bob) - feeCollectorBalanceBefore,
+                expectedProtocolFee,
+                "Incorrect protocol fee for PONDER pair"
+            );
+        }
+
+        // Test standard pair fees
+        {
+            vm.warp(block.timestamp + 1);
+
+            // Fresh allocation for standard pair
+            deal(address(token0), alice, swapAmount * 10);
+            deal(address(token1), alice, swapAmount * 10);
+
+            token0.transfer(standardPair, swapAmount);
+            token1.transfer(standardPair, swapAmount);
+            standardPairContract.mint(alice);
+
+            // Record balance before standard swap
+            uint256 standardFeeCollectorBefore = token0.balanceOf(bob);
+
+            // Perform swap
+            token0.transfer(standardPair, swapAmount);
+            standardPairContract.swap(0, swapAmount / 2, alice, "");
+
+            // Standard 0.3% protocol fee
+            uint256 expectedProtocolFee = (swapAmount * 30) / FEE_DENOMINATOR;  // 0.3%
+            assertEq(
+                token0.balanceOf(bob) - standardFeeCollectorBefore,
+                expectedProtocolFee,
+                "Incorrect protocol fee for standard pair"
+            );
+        }
+
+        vm.stopPrank();
     }
 }

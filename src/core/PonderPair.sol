@@ -19,12 +19,12 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
     address public override token0;
     address public override token1;
 
-    uint256 private constant STANDARD_FEE = 3;      // 0.3%
-    uint256 private constant KUB_LP_FEE = 2;        // 0.2%
-    uint256 private constant KUB_CREATOR_FEE = 1;   // 0.1%
-    uint256 private constant PONDER_LP_FEE = 15;    // 0.15%
-    uint256 private constant PONDER_CREATOR_FEE = 15;// 0.15%
-    uint256 private constant FEE_DENOMINATOR = 1000;
+    uint256 private constant FEE_DENOMINATOR = 10000;
+    uint256 private constant STANDARD_FEE = 30;      // 0.3% (30/10000)
+    uint256 private constant KUB_LP_FEE = 20;        // 0.2% (20/10000)
+    uint256 private constant KUB_CREATOR_FEE = 10;   // 0.1% (10/10000)
+    uint256 private constant PONDER_LP_FEE = 15;     // 0.15% (15/10000)
+    uint256 private constant PONDER_CREATOR_FEE = 15; // 0.15% (15/10000)
 
     uint112 private reserve0;
     uint112 private reserve1;
@@ -102,36 +102,54 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
 
     function _handleTokenFees(address token, uint256 amountIn, bool isPonderPair) private {
         address feeTo = IPonderFactory(factory).feeTo();
-        uint256 feeTransferred;
+        uint256 totalFeeAmount = 0;
+        uint256 remainingAmount = amountIn;
 
         try ILaunchToken(token).launcher() returns (address launchLauncher) {
             if (launchLauncher == launcher()) {
                 address creator = ILaunchToken(token).creator();
+
                 if (isPonderPair) {
+                    // PONDER pair fees (0.3% total - split 0.15% each)
                     if (feeTo != address(0)) {
-                        feeTransferred = (amountIn * PONDER_LP_FEE) / 1000;
-                        _safeTransfer(token, feeTo, feeTransferred);
+                        uint256 protocolFee = (remainingAmount * PONDER_LP_FEE) / FEE_DENOMINATOR;
+                        _safeTransfer(token, feeTo, protocolFee);
+                        totalFeeAmount += protocolFee;
+                        remainingAmount -= protocolFee;
                     }
-                    feeTransferred = (amountIn * PONDER_CREATOR_FEE) / 1000;
-                    _safeTransfer(token, creator, feeTransferred);
+
+                    uint256 creatorFee = (remainingAmount * PONDER_CREATOR_FEE) / FEE_DENOMINATOR;
+                    _safeTransfer(token, creator, creatorFee);
+                    totalFeeAmount += creatorFee;
                 } else {
+                    // KUB pair fees (0.3% total - 0.2% protocol, 0.1% creator)
                     if (feeTo != address(0)) {
-                        feeTransferred = (amountIn * KUB_LP_FEE) / 1000;
-                        _safeTransfer(token, feeTo, feeTransferred);
+                        uint256 protocolFee = (remainingAmount * KUB_LP_FEE) / FEE_DENOMINATOR;
+                        _safeTransfer(token, feeTo, protocolFee);
+                        totalFeeAmount += protocolFee;
+                        remainingAmount -= protocolFee;
                     }
-                    feeTransferred = (amountIn * KUB_CREATOR_FEE) / 1000;
-                    _safeTransfer(token, creator, feeTransferred);
+
+                    uint256 creatorFee = (remainingAmount * KUB_CREATOR_FEE) / FEE_DENOMINATOR;
+                    _safeTransfer(token, creator, creatorFee);
+                    totalFeeAmount += creatorFee;
                 }
             } else if (feeTo != address(0)) {
-                feeTransferred = (amountIn * STANDARD_FEE) / 1000;
-                _safeTransfer(token, feeTo, feeTransferred);
+                // Standard 0.3% fee for non-launch tokens
+                uint256 protocolFee = (amountIn * STANDARD_FEE) / FEE_DENOMINATOR;
+                _safeTransfer(token, feeTo, protocolFee);
+                totalFeeAmount += protocolFee;
             }
         } catch {
+            // Fallback to standard fee if token doesn't implement launcher interface
             if (feeTo != address(0)) {
-                feeTransferred = (amountIn * STANDARD_FEE) / 1000;
-                _safeTransfer(token, feeTo, feeTransferred);
+                uint256 protocolFee = (amountIn * STANDARD_FEE) / FEE_DENOMINATOR;
+                _safeTransfer(token, feeTo, protocolFee);
+                totalFeeAmount += protocolFee;
             }
         }
+
+        require(totalFeeAmount <= amountIn, "Fee exceeds input");
     }
 
     function _validateKValue(SwapData memory data) private view returns (bool) {

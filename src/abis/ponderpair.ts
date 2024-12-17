@@ -162,19 +162,6 @@ export const ponderpairAbi = [
   },
   {
     "type": "function",
-    "name": "getKLast",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "getReserves",
     "inputs": [],
     "outputs": [
@@ -333,6 +320,19 @@ export const ponderpairAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "ponder",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -680,25 +680,5 @@ export const ponderpairAbi = [
       }
     ],
     "anonymous": false
-  },
-  {
-    "type": "error",
-    "name": "InsufficientInputAmount",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "InsufficientLiquidity",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "InsufficientOutputAmount",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "InvalidTo",
-    "inputs": []
   }
 ] as const;

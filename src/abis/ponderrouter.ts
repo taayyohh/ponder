@@ -840,44 +840,6 @@ export const ponderrouterAbi = [
     "stateMutability": "nonpayable"
   },
   {
-    "type": "event",
-    "name": "Debug",
-    "inputs": [
-      {
-        "name": "message",
-        "type": "string",
-        "indexed": false,
-        "internalType": "string"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "SwapDebug",
-    "inputs": [
-      {
-        "name": "step",
-        "type": "string",
-        "indexed": false,
-        "internalType": "string"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
     "type": "error",
     "name": "ExcessiveInputAmount",
     "inputs": []
