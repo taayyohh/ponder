@@ -103,34 +103,31 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
     function _handleTokenFees(address token, uint256 amountIn, bool isPonderPair) private {
         address feeTo = IPonderFactory(factory).feeTo();
         uint256 totalFeeAmount = 0;
-        uint256 remainingAmount = amountIn;
 
         try ILaunchToken(token).launcher() returns (address launchLauncher) {
             if (launchLauncher == launcher()) {
                 address creator = ILaunchToken(token).creator();
 
                 if (isPonderPair) {
-                    // PONDER pair fees (0.3% total - split 0.15% each)
+                    // Calculate both fees from the original amount
                     if (feeTo != address(0)) {
-                        uint256 protocolFee = (remainingAmount * PONDER_LP_FEE) / FEE_DENOMINATOR;
+                        uint256 protocolFee = (amountIn * PONDER_LP_FEE) / FEE_DENOMINATOR;  // 0.15% of original
                         _safeTransfer(token, feeTo, protocolFee);
                         totalFeeAmount += protocolFee;
-                        remainingAmount -= protocolFee;
                     }
 
-                    uint256 creatorFee = (remainingAmount * PONDER_CREATOR_FEE) / FEE_DENOMINATOR;
+                    uint256 creatorFee = (amountIn * PONDER_CREATOR_FEE) / FEE_DENOMINATOR;  // 0.15% of original
                     _safeTransfer(token, creator, creatorFee);
                     totalFeeAmount += creatorFee;
                 } else {
-                    // KUB pair fees (0.3% total - 0.2% protocol, 0.1% creator)
+                    // KUB pair fees - same principle
                     if (feeTo != address(0)) {
-                        uint256 protocolFee = (remainingAmount * KUB_LP_FEE) / FEE_DENOMINATOR;
+                        uint256 protocolFee = (amountIn * KUB_LP_FEE) / FEE_DENOMINATOR;  // 0.2% of original
                         _safeTransfer(token, feeTo, protocolFee);
                         totalFeeAmount += protocolFee;
-                        remainingAmount -= protocolFee;
                     }
 
-                    uint256 creatorFee = (remainingAmount * KUB_CREATOR_FEE) / FEE_DENOMINATOR;
+                    uint256 creatorFee = (amountIn * KUB_CREATOR_FEE) / FEE_DENOMINATOR;  // 0.1% of original
                     _safeTransfer(token, creator, creatorFee);
                     totalFeeAmount += creatorFee;
                 }
@@ -141,7 +138,7 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
                 totalFeeAmount += protocolFee;
             }
         } catch {
-            // Fallback to standard fee if token doesn't implement launcher interface
+            // Fallback to standard fee
             if (feeTo != address(0)) {
                 uint256 protocolFee = (amountIn * STANDARD_FEE) / FEE_DENOMINATOR;
                 _safeTransfer(token, feeTo, protocolFee);
