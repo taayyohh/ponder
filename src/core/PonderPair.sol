@@ -96,6 +96,19 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
         uint256 amount1In = data.balance1 > data.reserve1 - data.amount1Out ?
             data.balance1 - (data.reserve1 - data.amount1Out) : 0;
 
+        // Validate the calculated amounts
+        if (amount0In == 0 && amount1In == 0) {
+            revert InsufficientInputCalculated(amount0In, amount1In, data.balance0, data.balance1);
+        }
+
+        // Additional validation for reserve calculations
+        if (data.amount0Out > 0 && data.balance0 < data.reserve0 - data.amount0Out) {
+            revert ReserveCalculationFailed(data.balance0, data.balance1, data.reserve0, data.reserve1);
+        }
+        if (data.amount1Out > 0 && data.balance1 < data.reserve1 - data.amount1Out) {
+            revert ReserveCalculationFailed(data.balance0, data.balance1, data.reserve0, data.reserve1);
+        }
+
         return (amount0In, amount1In);
     }
 
@@ -111,34 +124,31 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
                 if (isPonderPair) {
                     // Calculate both fees from the original amount
                     if (feeTo != address(0)) {
-                        uint256 protocolFee = (amountIn * PONDER_LP_FEE) / FEE_DENOMINATOR;  // 0.15% of original
+                        uint256 protocolFee = (amountIn * PONDER_LP_FEE) / FEE_DENOMINATOR;
                         _safeTransfer(token, feeTo, protocolFee);
                         totalFeeAmount += protocolFee;
                     }
 
-                    uint256 creatorFee = (amountIn * PONDER_CREATOR_FEE) / FEE_DENOMINATOR;  // 0.15% of original
+                    uint256 creatorFee = (amountIn * PONDER_CREATOR_FEE) / FEE_DENOMINATOR;
                     _safeTransfer(token, creator, creatorFee);
                     totalFeeAmount += creatorFee;
                 } else {
-                    // KUB pair fees - same principle
                     if (feeTo != address(0)) {
-                        uint256 protocolFee = (amountIn * KUB_LP_FEE) / FEE_DENOMINATOR;  // 0.2% of original
+                        uint256 protocolFee = (amountIn * KUB_LP_FEE) / FEE_DENOMINATOR;
                         _safeTransfer(token, feeTo, protocolFee);
                         totalFeeAmount += protocolFee;
                     }
 
-                    uint256 creatorFee = (amountIn * KUB_CREATOR_FEE) / FEE_DENOMINATOR;  // 0.1% of original
+                    uint256 creatorFee = (amountIn * KUB_CREATOR_FEE) / FEE_DENOMINATOR;
                     _safeTransfer(token, creator, creatorFee);
                     totalFeeAmount += creatorFee;
                 }
             } else if (feeTo != address(0)) {
-                // Standard 0.3% fee for non-launch tokens
                 uint256 protocolFee = (amountIn * STANDARD_FEE) / FEE_DENOMINATOR;
                 _safeTransfer(token, feeTo, protocolFee);
                 totalFeeAmount += protocolFee;
             }
         } catch {
-            // Fallback to standard fee
             if (feeTo != address(0)) {
                 uint256 protocolFee = (amountIn * STANDARD_FEE) / FEE_DENOMINATOR;
                 _safeTransfer(token, feeTo, protocolFee);
@@ -146,7 +156,9 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
             }
         }
 
-        require(totalFeeAmount <= amountIn, "Fee exceeds input");
+        if (totalFeeAmount > amountIn) {
+            revert FeeTooHigh(totalFeeAmount, amountIn);
+        }
     }
 
     function _validateKValue(SwapData memory data) private view returns (bool) {
@@ -154,26 +166,42 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
         uint256 balance1Adjusted = data.balance1 * 10000;
 
         if (data.amount0In > 0) {
-            uint256 fee = STANDARD_FEE;  // Now correctly 30/10000 = 0.3%
-            if (token1 == ponder()) {
-                fee = PONDER_LP_FEE + PONDER_CREATOR_FEE;  // 15 + 15 = 30/10000 = 0.3%
-            } else if (token0 == ponder()) {
-                fee = KUB_LP_FEE + KUB_CREATOR_FEE;  // 20 + 10 = 30/10000 = 0.3%
+            uint256 fee = STANDARD_FEE;  // Default to standard 0.3% fee
+            try ILaunchToken(token0).launcher() returns (address launchLauncher) {
+                if (launchLauncher == launcher()) {  // Only if it's a launch token
+                    // If launch token is being sold, use appropriate fee structure
+                    fee = (token1 == ponder()) ?
+                        (PONDER_LP_FEE + PONDER_CREATOR_FEE) : // Launch token -> PONDER
+                        (KUB_LP_FEE + KUB_CREATOR_FEE);        // Launch token -> KUB
+                }
+            } catch {
+                // Not a launch token, keep standard fee
             }
             balance0Adjusted -= data.amount0In * fee;
         }
 
         if (data.amount1In > 0) {
-            uint256 fee = STANDARD_FEE;
-            if (token0 == ponder()) {
-                fee = PONDER_LP_FEE + PONDER_CREATOR_FEE;
-            } else if (token1 == ponder()) {
-                fee = KUB_LP_FEE + KUB_CREATOR_FEE;
+            uint256 fee = STANDARD_FEE;  // Default to standard 0.3% fee
+            try ILaunchToken(token1).launcher() returns (address launchLauncher) {
+                if (launchLauncher == launcher()) {  // Only if it's a launch token
+                    // If launch token is being sold, use appropriate fee structure
+                    fee = (token0 == ponder()) ?
+                        (PONDER_LP_FEE + PONDER_CREATOR_FEE) : // Launch token -> PONDER
+                        (KUB_LP_FEE + KUB_CREATOR_FEE);        // Launch token -> KUB
+                }
+            } catch {
+                // Not a launch token, keep standard fee
             }
             balance1Adjusted -= data.amount1In * fee;
         }
 
-        return balance0Adjusted * balance1Adjusted >= uint256(data.reserve0) * uint256(data.reserve1) * 1000000;
+        uint256 reserveProduct = uint256(data.reserve0) * uint256(data.reserve1) * 1000000;
+
+        if (balance0Adjusted * balance1Adjusted < reserveProduct) {
+            revert KValueValidationFailed(balance0Adjusted, balance1Adjusted, reserveProduct);
+        }
+
+        return true;
     }
 
     function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external override lock {

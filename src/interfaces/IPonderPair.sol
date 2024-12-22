@@ -16,6 +16,12 @@ interface IPonderPair is IERC20 {
     );
     event Sync(uint112 reserve0, uint112 reserve1);
 
+    error InsufficientInputCalculated(uint256 amount0In, uint256 amount1In, uint256 balance0, uint256 balance1);
+    error KValueValidationFailed(uint256 balance0Adjusted, uint256 balance1Adjusted, uint256 reserveProduct);
+    error FeeTooHigh(uint256 totalFeeAmount, uint256 amountIn);
+    error ReserveCalculationFailed(uint256 balance0, uint256 balance1, uint256 reserve0, uint256 reserve1);
+
+
     function MINIMUM_LIQUIDITY() external pure returns (uint256);
     function factory() external view returns (address);
     function token0() external view returns (address);

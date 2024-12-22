@@ -46,6 +46,7 @@ contract PonderPairTest is Test {
     address bob = makeAddr("bob");
     address creator = makeAddr("creator");
     address treasury = makeAddr("treasury");
+    address ponderLauncher = makeAddr("ponderLauncher"); // New: separate launcher for PONDER
 
     // Common amounts
     uint256 constant INITIAL_LIQUIDITY_AMOUNT = 10000e18;
@@ -61,46 +62,42 @@ contract PonderPairTest is Test {
 
         // Deploy WETH and PONDER
         weth = new WETH9();
-        ponder = new PonderToken(treasury, treasury, treasury, address(this));
+        // Changed: Use separate launcher for PONDER
+        ponder = new PonderToken(treasury, treasury, treasury, ponderLauncher);
 
-        // Set up mock factory first
+        // Set up mock factory - uses test contract as launcher for launch tokens
         factory = new MockFactory(bob, address(this), address(ponder));
 
-        // Deploy LaunchToken
+        // Deploy LaunchToken - uses factory's launcher (address(this))
         launchToken = new LaunchToken(
             "Launch Token",
             "LAUNCH",
-            address(this),
+            address(this),  // This matches factory's launcher
             address(factory),
-            payable(address(1)), // router not needed for tests
+            payable(address(1)),
             address(ponder)
         );
 
-        // Set up creator for LaunchToken
+        // Rest of setup remains the same...
         launchToken.setupVesting(creator, INITIAL_LIQUIDITY_AMOUNT);
         launchToken.enableTransfers();
 
-        // Create pairs through factory
         address standardPairAddr = factory.createPair(address(token0), address(token1));
         address kubPairAddr = factory.createPair(address(launchToken), address(weth));
         address ponderPairAddr = factory.createPair(address(launchToken), address(ponder));
 
-        // Get pair instances
         standardPair = PonderPair(standardPairAddr);
         kubPair = PonderPair(kubPairAddr);
         ponderPair = PonderPair(ponderPairAddr);
 
-        // Set pairs in LaunchToken
         launchToken.setPairs(kubPairAddr, ponderPairAddr);
 
-        // Mint initial tokens to alice for testing
         token0.mint(alice, INITIAL_LIQUIDITY_AMOUNT * 2);
         token1.mint(alice, INITIAL_LIQUIDITY_AMOUNT * 2);
         deal(address(launchToken), alice, INITIAL_LIQUIDITY_AMOUNT * 2);
         deal(address(weth), alice, INITIAL_LIQUIDITY_AMOUNT * 2);
         deal(address(ponder), alice, INITIAL_LIQUIDITY_AMOUNT * 2);
 
-        // Approve tokens
         vm.startPrank(alice);
         token0.approve(address(standardPair), type(uint256).max);
         token1.approve(address(standardPair), type(uint256).max);
@@ -518,5 +515,37 @@ contract PonderPairTest is Test {
         assertGt(token1.balanceOf(alice), 0, "Should have received tokens");
         assertGt(finalReserve0, initialReserve0, "Reserve0 should have increased");
         assertLt(finalReserve1, initialReserve1, "Reserve1 should have decreased");
+    }
+
+    function testPonderTokenSwap() public {
+        // Create a new pair specifically for PONDER/token1
+        address ponderPairAddr = factory.createPair(address(ponder), address(token1));
+        PonderPair ponderTestPair = PonderPair(ponderPairAddr);
+
+        // Add initial liquidity
+        vm.startPrank(alice);
+        ponder.transfer(address(ponderTestPair), INITIAL_LIQUIDITY_AMOUNT);
+        token1.transfer(address(ponderTestPair), INITIAL_LIQUIDITY_AMOUNT);
+        ponderTestPair.mint(alice);
+        vm.stopPrank();
+
+        // Record balances before swap
+        uint256 feeToBefore = ponder.balanceOf(bob);  // bob is feeTo
+
+        // Perform swap selling PONDER
+        vm.startPrank(alice);
+        ponder.transfer(address(ponderTestPair), SWAP_AMOUNT);
+        ponderTestPair.swap(0, SWAP_AMOUNT/2, alice, "");
+        vm.stopPrank();
+
+        // Calculate expected standard fee (0.3%)
+        uint256 expectedStandardFee = (SWAP_AMOUNT * 30) / 10000;
+
+        // Verify only standard protocol fee was taken
+        assertEq(
+            ponder.balanceOf(bob) - feeToBefore,
+            expectedStandardFee,
+            "Should only take standard protocol fee when selling PONDER"
+        );
     }
 }
