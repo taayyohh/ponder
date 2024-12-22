@@ -166,42 +166,32 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
         uint256 balance1Adjusted = data.balance1 * 10000;
 
         if (data.amount0In > 0) {
-            uint256 fee = STANDARD_FEE;  // Default to standard 0.3% fee
+            uint256 fee = STANDARD_FEE;  // Default to standard fee
+            // Only check pair type if it's a launch token
             try ILaunchToken(token0).launcher() returns (address launchLauncher) {
-                if (launchLauncher == launcher()) {  // Only if it's a launch token
-                    // If launch token is being sold, use appropriate fee structure
+                if (launchLauncher == launcher()) {
                     fee = (token1 == ponder()) ?
-                        (PONDER_LP_FEE + PONDER_CREATOR_FEE) : // Launch token -> PONDER
-                        (KUB_LP_FEE + KUB_CREATOR_FEE);        // Launch token -> KUB
+                        (PONDER_LP_FEE + PONDER_CREATOR_FEE) : // Launch -> PONDER
+                        (KUB_LP_FEE + KUB_CREATOR_FEE);        // Launch -> KUB
                 }
-            } catch {
-                // Not a launch token, keep standard fee
-            }
+            } catch {}
             balance0Adjusted -= data.amount0In * fee;
         }
 
         if (data.amount1In > 0) {
-            uint256 fee = STANDARD_FEE;  // Default to standard 0.3% fee
+            uint256 fee = STANDARD_FEE;  // Default to standard fee
+            // Only check pair type if it's a launch token
             try ILaunchToken(token1).launcher() returns (address launchLauncher) {
-                if (launchLauncher == launcher()) {  // Only if it's a launch token
-                    // If launch token is being sold, use appropriate fee structure
+                if (launchLauncher == launcher()) {
                     fee = (token0 == ponder()) ?
-                        (PONDER_LP_FEE + PONDER_CREATOR_FEE) : // Launch token -> PONDER
-                        (KUB_LP_FEE + KUB_CREATOR_FEE);        // Launch token -> KUB
+                        (PONDER_LP_FEE + PONDER_CREATOR_FEE) : // Launch -> PONDER
+                        (KUB_LP_FEE + KUB_CREATOR_FEE);        // Launch -> KUB
                 }
-            } catch {
-                // Not a launch token, keep standard fee
-            }
+            } catch {}
             balance1Adjusted -= data.amount1In * fee;
         }
 
-        uint256 reserveProduct = uint256(data.reserve0) * uint256(data.reserve1) * 1000000;
-
-        if (balance0Adjusted * balance1Adjusted < reserveProduct) {
-            revert KValueValidationFailed(balance0Adjusted, balance1Adjusted, reserveProduct);
-        }
-
-        return true;
+        return balance0Adjusted * balance1Adjusted >= uint256(data.reserve0) * uint256(data.reserve1) * 1000000;
     }
 
     function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external override lock {

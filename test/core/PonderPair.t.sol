@@ -517,35 +517,36 @@ contract PonderPairTest is Test {
         assertLt(finalReserve1, initialReserve1, "Reserve1 should have decreased");
     }
 
-    function testPonderTokenSwap() public {
-        // Create a new pair specifically for PONDER/token1
-        address ponderPairAddr = factory.createPair(address(ponder), address(token1));
-        PonderPair ponderTestPair = PonderPair(ponderPairAddr);
+    function testPonderToETHSwap() public {
+        // Create PONDER/WETH pair
+        address ponderKubPair = factory.createPair(address(ponder), address(weth));
 
-        // Add initial liquidity
+        // Fund alice with ETH for weth deposit
+        vm.deal(alice, INITIAL_LIQUIDITY_AMOUNT);
+
+        // Add liquidity
         vm.startPrank(alice);
-        ponder.transfer(address(ponderTestPair), INITIAL_LIQUIDITY_AMOUNT);
-        token1.transfer(address(ponderTestPair), INITIAL_LIQUIDITY_AMOUNT);
-        ponderTestPair.mint(alice);
+        // Handle PONDER side
+        ponder.transfer(address(ponderKubPair), INITIAL_LIQUIDITY_AMOUNT);
+
+        // Handle WETH side
+        weth.deposit{value: INITIAL_LIQUIDITY_AMOUNT}();
+        weth.transfer(address(ponderKubPair), INITIAL_LIQUIDITY_AMOUNT);
+        PonderPair(ponderKubPair).mint(alice);
+
+        // Record balances
+        uint256 feeToBefore = ponder.balanceOf(bob);
+
+        // Perform swap
+        ponder.transfer(address(ponderKubPair), SWAP_AMOUNT);
+        PonderPair(ponderKubPair).swap(0, SWAP_AMOUNT/2, alice, "");
         vm.stopPrank();
 
-        // Record balances before swap
-        uint256 feeToBefore = ponder.balanceOf(bob);  // bob is feeTo
-
-        // Perform swap selling PONDER
-        vm.startPrank(alice);
-        ponder.transfer(address(ponderTestPair), SWAP_AMOUNT);
-        ponderTestPair.swap(0, SWAP_AMOUNT/2, alice, "");
-        vm.stopPrank();
-
-        // Calculate expected standard fee (0.3%)
-        uint256 expectedStandardFee = (SWAP_AMOUNT * 30) / 10000;
-
-        // Verify only standard protocol fee was taken
+        // Verify standard fee
         assertEq(
             ponder.balanceOf(bob) - feeToBefore,
-            expectedStandardFee,
-            "Should only take standard protocol fee when selling PONDER"
+            (SWAP_AMOUNT * 30) / 10000,
+            "Should take standard 0.3% fee when selling PONDER to KUB"
         );
     }
 }

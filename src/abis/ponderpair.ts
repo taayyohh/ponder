@@ -680,5 +680,94 @@ export const ponderpairAbi = [
       }
     ],
     "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "FeeTooHigh",
+    "inputs": [
+      {
+        "name": "totalFeeAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amountIn",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InsufficientInputCalculated",
+    "inputs": [
+      {
+        "name": "amount0In",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount1In",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "balance0",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "balance1",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "KValueValidationFailed",
+    "inputs": [
+      {
+        "name": "balance0Adjusted",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "balance1Adjusted",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "reserveProduct",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ReserveCalculationFailed",
+    "inputs": [
+      {
+        "name": "balance0",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "balance1",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "reserve0",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "reserve1",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
   }
 ] as const;
