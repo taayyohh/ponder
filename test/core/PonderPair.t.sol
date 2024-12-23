@@ -1,12 +1,34 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "forge-std/Test.sol";
-import "../mocks/ERC20Mint.sol";
 import "../../src/core/PonderPair.sol";
-import "../../src/launch/LaunchToken.sol";
 import "../../src/core/PonderToken.sol";
+import "../../src/launch/LaunchToken.sol";
+import "../../src/periphery/PonderRouter.sol";
+import "../mocks/ERC20Mint.sol";
 import "../mocks/WETH9.sol";
+import "forge-std/Test.sol";
+
+contract MockKKUBUnwrapper {
+    address public immutable WETH;
+
+    constructor(address _weth) {
+        WETH = _weth;
+    }
+
+    function unwrapKKUB(uint256 amount, address recipient) external returns (bool) {
+        // Transfer WETH from sender to this contract
+        require(IERC20(WETH).transferFrom(msg.sender, address(this), amount), "Transfer failed");
+        // Unwrap WETH for ETH
+        IWETH(WETH).withdraw(amount);
+        // Send ETH to recipient
+        (bool success,) = recipient.call{value: amount}("");
+        require(success, "ETH transfer failed");
+        return true;
+    }
+
+    receive() external payable {}
+}
 
 contract MockFactory {
     address public feeTo;
@@ -19,6 +41,11 @@ contract MockFactory {
         feeTo = _feeTo;
         launcher = _launcher;
         ponder = _ponder;
+    }
+
+    // Add getPair function that router needs
+    function getPair(address tokenA, address tokenB) external view returns (address) {
+        return pairs[tokenA][tokenB];
     }
 
     function createPair(address tokenA, address tokenB) external returns (address pair) {
@@ -40,13 +67,16 @@ contract PonderPairTest is Test {
     PonderToken ponder;
     WETH9 weth;
     MockFactory factory;
+    MockKKUBUnwrapper unwrapper; // Add unwrapper
+    PonderRouter router; // Add router variable
+
 
     // Users for testing
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
     address creator = makeAddr("creator");
     address treasury = makeAddr("treasury");
-    address ponderLauncher = makeAddr("ponderLauncher"); // New: separate launcher for PONDER
+    address ponderLauncher = makeAddr("ponderLaunchefr"); // New: separate launcher for PONDER
 
     // Common amounts
     uint256 constant INITIAL_LIQUIDITY_AMOUNT = 10000e18;
@@ -67,6 +97,14 @@ contract PonderPairTest is Test {
 
         // Set up mock factory - uses test contract as launcher for launch tokens
         factory = new MockFactory(bob, address(this), address(ponder));
+
+        // Setup unwrapper and router
+        unwrapper = new MockKKUBUnwrapper(address(weth));
+        router = new PonderRouter(
+            address(factory),
+            address(weth),
+            address(unwrapper)
+        );
 
         // Deploy LaunchToken - uses factory's launcher (address(this))
         launchToken = new LaunchToken(
@@ -108,6 +146,7 @@ contract PonderPairTest is Test {
         vm.stopPrank();
     }
 
+
     function testStandardSwap() public {
         addInitialLiquidity(standardPair, token0, token1, INITIAL_LIQUIDITY_AMOUNT);
 
@@ -115,6 +154,12 @@ contract PonderPairTest is Test {
         token0.transfer(address(standardPair), SWAP_AMOUNT);
         standardPair.swap(0, 900e18, alice, "");
         vm.stopPrank();
+
+        console.log("Standard swap:");
+        console.log("token0 address:", address(token0));
+        console.log("token1 address:", address(token1));
+        console.log("Pair token0:", standardPair.token0());
+        console.log("Pair token1:", standardPair.token1());
 
         assertGt(token1.balanceOf(alice), 0, "Should have received token1");
         (uint112 reserve0, uint112 reserve1,) = standardPair.getReserves();
@@ -517,36 +562,162 @@ contract PonderPairTest is Test {
         assertLt(finalReserve1, initialReserve1, "Reserve1 should have decreased");
     }
 
+    function testPonderToTokenSwaps() public {
+        // Create pair
+        address ponderToken0Pair = factory.createPair(address(ponder), address(token0));
+        PonderPair pair = PonderPair(ponderToken0Pair);
+
+        vm.startPrank(alice);
+
+        // Add liquidity
+        ponder.transfer(address(pair), INITIAL_LIQUIDITY_AMOUNT);
+        token0.transfer(address(pair), INITIAL_LIQUIDITY_AMOUNT);
+        pair.mint(alice);
+
+        // Approve tokens
+        ponder.approve(address(router), type(uint256).max);
+        token0.approve(address(router), type(uint256).max);
+
+        // Record state
+        uint256 token0BalanceBefore = token0.balanceOf(alice);
+        uint256 feeToBefore = ponder.balanceOf(bob);
+
+        // Set up path for "I want to swap PONDER for token0"
+        address[] memory path = new address[](2);
+        path[0] = address(ponder);  // Input token
+        path[1] = address(token0);  // Output token
+
+        // Execute swap
+        router.swapExactTokensForTokens(
+            SWAP_AMOUNT,
+            0,
+            path,
+            alice,
+            block.timestamp + 1
+        );
+
+        // Verify results
+        assertGt(
+            token0.balanceOf(alice) - token0BalanceBefore,
+            0,
+            "Should receive token0"
+        );
+
+        vm.stopPrank();
+    }
+
     function testPonderToETHSwap() public {
         // Create PONDER/WETH pair
         address ponderKubPair = factory.createPair(address(ponder), address(weth));
 
-        // Fund alice with ETH for weth deposit
-        vm.deal(alice, INITIAL_LIQUIDITY_AMOUNT);
-
-        // Add liquidity
         vm.startPrank(alice);
-        // Handle PONDER side
+        // Add liquidity
         ponder.transfer(address(ponderKubPair), INITIAL_LIQUIDITY_AMOUNT);
-
-        // Handle WETH side
+        vm.deal(alice, INITIAL_LIQUIDITY_AMOUNT);
         weth.deposit{value: INITIAL_LIQUIDITY_AMOUNT}();
         weth.transfer(address(ponderKubPair), INITIAL_LIQUIDITY_AMOUNT);
         PonderPair(ponderKubPair).mint(alice);
 
+        // Approve PONDER for router
+        ponder.approve(address(router), type(uint256).max);
+
         // Record balances
         uint256 feeToBefore = ponder.balanceOf(bob);
+        uint256 ethBalanceBefore = alice.balance;
 
-        // Perform swap
-        ponder.transfer(address(ponderKubPair), SWAP_AMOUNT);
-        PonderPair(ponderKubPair).swap(0, SWAP_AMOUNT/2, alice, "");
-        vm.stopPrank();
+        // Setup swap path
+        address[] memory path = new address[](2);
+        path[0] = address(ponder);
+        path[1] = address(weth);
 
-        // Verify standard fee
+        // Execute swap
+        router.swapExactTokensForETH(
+            SWAP_AMOUNT,
+            0, // no minimum for test
+            path,
+            alice,
+            block.timestamp + 1
+        );
+
+        assertGt(
+            alice.balance - ethBalanceBefore,
+            0,
+            "Should receive ETH"
+        );
         assertEq(
             ponder.balanceOf(bob) - feeToBefore,
             (SWAP_AMOUNT * 30) / 10000,
-            "Should take standard 0.3% fee when selling PONDER to KUB"
+            "Should take standard 0.3% fee when selling PONDER to ETH"
         );
+
+        vm.stopPrank();
     }
-}
+
+    function testETHToLaunchTokenSwap() public {
+        // Create launch token/WETH pair
+        address launchKubPair = factory.createPair(address(launchToken), address(weth));
+
+        // Fund alice
+        vm.deal(alice, INITIAL_LIQUIDITY_AMOUNT * 2);
+
+        // Add liquidity
+        vm.startPrank(alice);
+
+        // Add WETH side
+        weth.deposit{value: INITIAL_LIQUIDITY_AMOUNT}();
+        weth.transfer(address(launchKubPair), INITIAL_LIQUIDITY_AMOUNT);
+
+        // Add launch token side
+        launchToken.transfer(address(launchKubPair), INITIAL_LIQUIDITY_AMOUNT);
+        PonderPair(launchKubPair).mint(alice);
+
+        // Try swap
+        uint256 swapAmount = 1 ether;
+        vm.deal(alice, swapAmount); // Ensure alice has ETH to swap
+
+        // This should fail like prod
+        weth.deposit{value: swapAmount}();
+        weth.transfer(address(launchKubPair), swapAmount);
+        PonderPair(launchKubPair).swap(SWAP_AMOUNT/2, 0, alice, "");
+
+        vm.stopPrank();
+    }
+
+    function testETHToLaunchTokenViaRouter() public {
+        // Create launch token/WETH pair
+        address launchKubPair = factory.createPair(address(launchToken), address(weth));
+
+        // Fund alice
+        vm.deal(alice, INITIAL_LIQUIDITY_AMOUNT * 2);
+
+        vm.startPrank(alice);
+
+        // Approve tokens for router
+        launchToken.approve(address(router), type(uint256).max);
+        weth.approve(address(router), type(uint256).max);
+
+        // Add liquidity with ETH
+        router.addLiquidityETH{value: INITIAL_LIQUIDITY_AMOUNT}(
+            address(launchToken),
+            INITIAL_LIQUIDITY_AMOUNT,
+            0,
+            0,
+            alice,
+            block.timestamp + 1
+        );
+
+        // Try swap
+        address[] memory path = new address[](2);
+        path[0] = address(weth);
+        path[1] = address(launchToken);
+
+        router.swapExactETHForTokens{value: 1 ether}(
+            0,
+            path,
+            alice,
+            block.timestamp + 1
+        );
+
+
+        vm.stopPrank();
+    }}

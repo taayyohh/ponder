@@ -10,4 +10,6 @@ interface ILaunchToken {
 
     function creator() external view returns (address);
     function launcher() external view returns (address);
+    function isLaunchToken() external view returns (bool);
+
 }

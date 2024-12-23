@@ -117,8 +117,8 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
         address feeTo = IPonderFactory(factory).feeTo();
         uint256 totalFeeAmount = 0;
 
-        try ILaunchToken(token).launcher() returns (address launchLauncher) {
-            if (launchLauncher == launcher()) {
+        try ILaunchToken(token).isLaunchToken() returns (bool isLaunch) {
+            if (isLaunch && ILaunchToken(token).launcher() == launcher()) {
                 address creator = ILaunchToken(token).creator();
 
                 if (isPonderPair) {
@@ -166,32 +166,32 @@ contract PonderPair is PonderERC20("Ponder LP", "PONDER-LP"), IPonderPair {
         uint256 balance1Adjusted = data.balance1 * 10000;
 
         if (data.amount0In > 0) {
-            uint256 fee = STANDARD_FEE;  // Default to standard fee
-            // Only check pair type if it's a launch token
+            uint256 fee = STANDARD_FEE;
             try ILaunchToken(token0).launcher() returns (address launchLauncher) {
                 if (launchLauncher == launcher()) {
                     fee = (token1 == ponder()) ?
-                        (PONDER_LP_FEE + PONDER_CREATOR_FEE) : // Launch -> PONDER
-                        (KUB_LP_FEE + KUB_CREATOR_FEE);        // Launch -> KUB
+                        (PONDER_LP_FEE + PONDER_CREATOR_FEE) :
+                        (KUB_LP_FEE + KUB_CREATOR_FEE);
                 }
-            } catch {}
+            } catch { }
             balance0Adjusted -= data.amount0In * fee;
         }
 
         if (data.amount1In > 0) {
-            uint256 fee = STANDARD_FEE;  // Default to standard fee
-            // Only check pair type if it's a launch token
+            uint256 fee = STANDARD_FEE;
             try ILaunchToken(token1).launcher() returns (address launchLauncher) {
                 if (launchLauncher == launcher()) {
                     fee = (token0 == ponder()) ?
-                        (PONDER_LP_FEE + PONDER_CREATOR_FEE) : // Launch -> PONDER
-                        (KUB_LP_FEE + KUB_CREATOR_FEE);        // Launch -> KUB
+                        (PONDER_LP_FEE + PONDER_CREATOR_FEE) :
+                        (KUB_LP_FEE + KUB_CREATOR_FEE);
                 }
-            } catch {}
+            } catch { }
             balance1Adjusted -= data.amount1In * fee;
         }
 
-        return balance0Adjusted * balance1Adjusted >= uint256(data.reserve0) * uint256(data.reserve1) * 1000000;
+        uint256 reserveProduct = uint256(data.reserve0) * uint256(data.reserve1) * 1000000;
+
+        return balance0Adjusted * balance1Adjusted >= reserveProduct;
     }
 
     function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external override lock {

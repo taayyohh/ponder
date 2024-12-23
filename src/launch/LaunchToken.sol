@@ -75,6 +75,10 @@ contract LaunchToken is PonderERC20 {
         _mint(_launcher, TOTAL_SUPPLY);
     }
 
+    function isLaunchToken() external pure returns (bool) {
+        return true;
+    }
+
     function setupVesting(address _creator, uint256 _amount) external {
         if (msg.sender != launcher) revert Unauthorized();
         creator = _creator;

@@ -8,6 +8,7 @@ import "../interfaces/IWETH.sol";
 import "../libraries/TransferHelper.sol";
 import "./KKUBUnwrapper.sol";
 
+
 /// @title Ponder Router for swapping tokens and managing liquidity
 /// @notice Handles routing of trades and liquidity provision between pairs
 /// @dev Manages interactions with PonderPair contracts and handles unwrapping of KKUB
@@ -243,15 +244,29 @@ contract PonderRouter {
     function _swap(uint256[] memory amounts, address[] memory path, address _to) internal virtual {
         for (uint256 i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
-            (address token0,) = sortTokens(input, output);
+
+            // Get pair address
+            address pair = factory.getPair(input, output);
+            if (pair == address(0)) {
+                (address token0, address token1) = sortTokens(input, output);
+                pair = factory.getPair(token0, token1);
+            }
+
             uint256 amountOut = amounts[i + 1];
+
+            // Get the actual token0 from the pair contract
+            address token0 = IPonderPair(pair).token0();
+
+            // Determine output amounts based on pair's actual token ordering
             (uint256 amount0Out, uint256 amount1Out) = input == token0
-                ? (uint256(0), amountOut)
-                : (amountOut, uint256(0));
-            // For the final swap to WETH, ensure it comes to the router
-            address to = i < path.length - 2 ? factory.getPair(output, path[i + 2]) :
-                (output == WETH ? address(this) : _to);
-            IPonderPair(factory.getPair(input, output)).swap(amount0Out, amount1Out, to, new bytes(0));
+                ? (uint256(0), amountOut)  // input is token0, so output goes to token1
+                : (amountOut, uint256(0)); // input is token1, so output goes to token0
+
+            // Determine recipient
+            address to = i < path.length - 2 ? factory.getPair(output, path[i + 2]) : (output == WETH ? address(this) : _to);
+
+            // Execute the swap
+            IPonderPair(pair).swap(amount0Out, amount1Out, to, new bytes(0));
         }
     }
 
